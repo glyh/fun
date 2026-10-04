@@ -1,6 +1,6 @@
 ---
 title: Syntax.t vs Surface.t — is one IR layer removable?
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:research
 status: closed

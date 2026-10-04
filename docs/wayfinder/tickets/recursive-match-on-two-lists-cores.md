@@ -1,6 +1,6 @@
 ---
 title: A deferred arity-2 recursive call cores the compiler on quoted impl evidence
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -32,10 +32,10 @@ reproduced by the integrator. Any structural comparison of two lists has this sh
 ## The reproducer
 
 A recursive helper at a unit's top level, plus a trivial `pub impl` whose body calls it,
-plus `export Lists.{probe};` in `std/stage2.fun` — then build and run a program that
+plus `export Lists.{probe};` in `std/stage2.qll` — then build and run a program that
 compares two lists with `==`:
 
-```fun
+```quill
 rec probe_go = fn(xs : List(I64), ys : List(I64)) : Bool {
   match (xs) {
     Nil => match (ys) { Nil => True, Cons(_, _) => False },
@@ -84,9 +84,9 @@ runner hang.
 
 ## Reading
 
-- `src/Fun.Compiler/Nbe.Match.cs`, `src/Fun.Compiler/Nbe.StuckMatch.cs` — `QuoteStuckMatch`
+- `src/Quill.Compiler/Nbe.Match.cs`, `src/Quill.Compiler/Nbe.StuckMatch.cs` — `QuoteStuckMatch`
   and the environment read-back the fork named
-- `src/Fun.Compiler/MatchCompile.cs` — the decision trees the two-argument match compiles to
+- `src/Quill.Compiler/MatchCompile.cs` — the decision trees the two-argument match compiles to
 - `test/conformance/cases/values/` — where a case belongs once it passes; the runner's
   hang detector (`port-runner-does-not-timebox-elaboration`) is what a reproducer meets
   first
@@ -144,22 +144,22 @@ second argument is not an inspection.
 The trigger is a recursive call **applied more than once** (directly, arity ≥ 2) whose
 fixpoint is deferred under the checker, in a body that readback quotes. A second
 ingredient: the impl must be **opened twice** so `OpenImpl`'s duplicate check reaches
-`Convertible` (`src/Fun.Compiler/Elaborator.Traits.cs:559-567`), the only caller that
+`Convertible` (`src/Quill.Compiler/Elaborator.Traits.cs:559-567`), the only caller that
 quotes impl evidence here. One `open` gives `VALUE True`; `open` the unit twice aborts.
 
 **Smallest reproducer** (self-contained, no `std` edit; `--file` picks up the sibling
 unit):
 
-`probe.unit-mylists.fun`
-```fun
+`probe.unit-mylists.qll`
+```quill
 open (import "std");
 pub rec probe_go = fn(xs : List(I64), acc : I64) : Bool {
   match (xs) { Nil => True, Cons(_, t) => probe_go(t, acc + 1) }
 };
 pub impl probe : Eq(List(I64)) = module { fn eq(xs, ys) { probe_go(xs, 0) } };
 ```
-`probe.fun`
-```fun
+`probe.qll`
+```quill
 { open (import "mylists"); open (import "mylists"); 1 }
 ```
 
@@ -173,7 +173,7 @@ so ~2900 steps run before the 1 MB stack does, well under `Budget.DefaultLimit`.
 **Where the fix goes** (candidate shapes, not chosen):
 
 - **A. Give the deferred call a spine — match the decided design.** `Value.VGlued`
-  (`src/Fun.Kernel/Core.Rec.cs:46`) keeps one `Arg` and `Nbe.Rec.cs:51` unfolds on the
+  (`src/Quill.Kernel/Core.Rec.cs:46`) keeps one `Arg` and `Nbe.Rec.cs:51` unfolds on the
   second. Carry the remaining arguments, extend the spine in the `VGlued` case, and fold
   the whole spine back to `Term.Ap(...)` in `Quote` (`Nbe.cs:550`) and `Unify.cs:171,202`;
   unfold only through `Force`/`NeedsShape` (`Nbe.cs:207`). `SameDeferredCall`

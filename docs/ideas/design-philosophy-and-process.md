@@ -57,7 +57,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/10uzi0q/writability_of_pr
 2023-02; the counter-position in Unpopular Opinions?, score 158, 417 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/jd30p7/unpopular_opinions/, 2020-10.
 
-**Bearing on `fun`.** Undecided and unowned: no ticket weighs writability against readability. What
+**Bearing on `quill`.** Undecided and unowned: no ticket weighs writability against readability. What
 limits the choice is the reader's own rule — keywords are a fixed, reserved set of token kinds while
 operators are one uniform token shape decided by the binding table — so keystroke arguments reach the
 language through `pub infix` bindings in the Prelude, not through the reader. The map's fog item on the
@@ -96,7 +96,7 @@ Crystal and Nim?, score 87, 246 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/10hu5md/why_is_zig_so_much_more_successful_than_crystal/,
 2023-01.
 
-**Bearing on `fun`.** Genuinely new as a stated position — no ticket records a weirdness budget. The
+**Bearing on `quill`.** Genuinely new as a stated position — no ticket records a weirdness budget. The
 language has already spent on unfamiliarity without discussing it: reserved keywords are recorded in
 CONTEXT as a deliberate departure from Honu, which reserves nothing; a bare lowercase name in a pattern
 binds while an uppercase one refers, decided by case rather than by Context; and `^name` pins an existing
@@ -132,11 +132,11 @@ Lisp (all three of `if`/`when`/`unless` as macros).
 https://www.reddit.com/r/ProgrammingLanguages/comments/1kggvqt/why_dont_more_languages_include_until_and_unless/,
 2025-05.
 
-**Bearing on `fun`.** Already has it, in a form stronger than the thread argues for: the keyword set is
+**Bearing on `quill`.** Already has it, in a form stronger than the thread argues for: the keyword set is
 fixed and reserved by decision, while the constructs most languages would add keywords for are already
 library bindings — `&&` and `||` ship as Prelude `pub infix` templates expanding to `match` over `Bool`
 (`add-short-circuit-and-or-operators.md`, closed 2026-07-30), and comparison and equality are Prelude
-definitions over Primitives at `std/stage2.fun:13-25`. The budget is real and its ledger is visible:
+definitions over Primitives at `std/stage2.qll:13-25`. The budget is real and its ledger is visible:
 `Context` reserves a word, a `Template` costs nothing.
 
 ### Expressiveness must pay for its tractability cost
@@ -169,9 +169,9 @@ non-substitutes for parametric polymorphism by a commenter who wants *more* expr
 https://www.reddit.com/r/ProgrammingLanguages/comments/kro7li/lessons_learned_over_the_years/, 2021-01
 (u/moon-chilled score 12 on the expressiveness-tractability tradeoff; u/PL_Design score 3 rebutting).
 
-**Bearing on `fun`.** Named, in the philosophy line: Consistency > Flexibility > Correctness, with
+**Bearing on `quill`.** Named, in the philosophy line: Consistency > Flexibility > Correctness, with
 Flexibility defined as "willing to trade theoretical properties such as parametricity for practical
-power" and type-case on open `Type` declared acceptable — `fun` takes the "expressiveness must buy
+power" and type-case on open `Type` declared acceptable — `quill` takes the "expressiveness must buy
 something" position and has written down what it is buying. The refusal side is equally written: the
 evaluation budget caps what checking may compute (exceeding it is a compile error naming the call),
 termination is never checked, and a depth guard over evaluation was rejected rather than shipped.
@@ -205,10 +205,10 @@ language refuses to let you write).
 https://www.reddit.com/r/ProgrammingLanguages/comments/q62w62/static_vs_dynamic_typing_would_love_to_hear_your/,
 2021-10 (the "Complexity has to live somewhere" quotation is posted inside this thread).
 
-**Bearing on `fun`.** The unresolved placement question is on the map as fog: the
+**Bearing on `quill`.** The unresolved placement question is on the map as fog: the
 library-versus-compiler-machinery boundary (UFCS, FFI) is undecided, and Stage 11's decided direction is
 one specific placement — "demote language constructs hardwired in the compiler core down into library-level
-definitions … should avoid building new compiler machinery unless strictly necessary." So `fun` has the
+definitions … should avoid building new compiler machinery unless strictly necessary." So `quill` has the
 rule in practice (complexity moves into the Prelude where a program can see it) and has not written the
 general principle anywhere as a decision.
 
@@ -239,13 +239,13 @@ method), Common Lisp (`unless`/`when` as macros), Emacs Lisp (all three conditio
 https://www.reddit.com/r/ProgrammingLanguages/comments/1kggvqt/why_dont_more_languages_include_until_and_unless/,
 2025-05 (u/0xzhzh score 65, u/Jwosty score 12, u/Tysonzero score 25).
 
-**Bearing on `fun`.** Already has it, and is actively extending it: `Bool` and `if` are Prelude
+**Bearing on `quill`.** Already has it, and is actively extending it: `Bool` and `if` are Prelude
 definitions — `type Bool = False | True` in the prelude with `if` expanding to `match`, which let the
 dedicated `Core.If` node and its `FIf` frame be removed — `&&`/`||` are `pub infix` templates, `type` is a
-`pub syntax` macro at `std/type.fun:234`, and the umbrella ticket
+`pub syntax` macro at `std/type.qll:234`, and the umbrella ticket
 `specify-stage-11-macro-powered-language-features.md` stays open for successive increments. What remains
 hardwired is measured, not assumed: the arithmetic five are still Primitives at
-`src/Fun.Compiler/Primitives.cs:44`.
+`src/Quill.Compiler/Primitives.cs:44`.
 
 ### A small core plus a macro system carries the rest of the language
 
@@ -279,7 +279,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/uhtxqi/worst_design_decis
 https://www.reddit.com/r/ProgrammingLanguages/comments/jd30p7/unpopular_opinions/, 2020-10 (u/munificent
 score 44).
 
-**Bearing on `fun`.** This is the decided direction, not a proposal: Stage 11's flagship is demoting
+**Bearing on `quill`.** This is the decided direction, not a proposal: Stage 11's flagship is demoting
 language constructs hardwired in the compiler core into library-level definitions, "proving the type
 theory carries its own syntax instead of growing more compiler machinery", with increment 1
 (`Bool` + `if`) landed and the ticket `specify-stage-11-macro-powered-language-features.md` open as the
@@ -319,7 +319,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/mudz94/has_there_ever_bee
 https://www.reddit.com/r/ProgrammingLanguages/comments/uhtxqi/worst_design_decisions_youve_ever_seen/, 2022-05
 (u/munificent score 172 on Dart 1.0).
 
-**Bearing on `fun`.** `fun` keeps the ledger this idea needs: every promotion is a ticket with `status`
+**Bearing on `quill`.** `quill` keeps the ledger this idea needs: every promotion is a ticket with `status`
 and, once closed, a `resolution:` field, and every refusal is recorded in the design map's rejected list
 with its reason —
 `M.(e)` local open, `type X = struct {…}`, a separate type grammar, generated-symbol ids, first-match
@@ -357,12 +357,12 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/minw5w/why_are_product_ty
 2021-04. Raw comment tree read from `comments/minw5w.json` (95 comments retrieved; disclosure: this
 thread's comments are not in `meta-comments.md`).
 
-**Bearing on `fun`.** Already has it, and has had it since the core was decided: nominal `Constructor`s,
+**Bearing on `quill`.** Already has it, and has had it since the core was decided: nominal `Constructor`s,
 `Pattern head` resolution by scope set, and `match` with a compile-time refusal for a non-exhaustive one
 (`non-exhaustive match: … is not matched`, `Elaborator.Match.cs:72`) — and the evaluator may then assume
 a selected arm (`Nbe.Match.cs:81`). There is no scarcity to explain: sums are the ordinary case, and
-`Option(A)` in `std/option.fun` carries absence. The conservatism half of the argument is the live part
-for `fun`, and no ticket addresses it.
+`Option(A)` in `std/option.qll` carries absence. The conservatism half of the argument is the live part
+for `quill`, and no ticket addresses it.
 
 ### Type safety earns its keep only by deleting runtime checks
 
@@ -397,11 +397,11 @@ programming?, score 99, 130 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/uh0sez/does_the_programming_language_design_community/,
 2022-05 (u/lassehp score 13, u/furyzer00 score 11).
 
-**Bearing on `fun`.** `fun` already spends its type checking on exactly this ledger, twice: a checked
+**Bearing on `quill`.** `quill` already spends its type checking on exactly this ledger, twice: a checked
 `match` means `Nbe` does no tag search ("the match was checked exhaustive"), and a pure arrow — empty
 effect row — is what lets the checker evaluate a call while checking, within the evaluation budget. What
 the criterion would question is the *dependently typed* half, where proofs do not delete a runtime check;
-`fun`'s recorded answer is the philosophy line, Correctness ranked third and Flexibility (practical power
+`quill`'s recorded answer is the philosophy line, Correctness ranked third and Flexibility (practical power
 over parametricity) ranked above it.
 
 ### Optional typing's failure mode is the lowest common denominator; a migration path is what saves it
@@ -437,7 +437,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/uhtxqi/worst_design_decis
 https://www.reddit.com/r/ProgrammingLanguages/comments/q62w62/static_vs_dynamic_typing_would_love_to_hear_your/,
 2021-10 (u/[deleted] score 20).
 
-**Bearing on `fun`.** Genuinely new to the project, and mostly not applicable: there is no gradual tier
+**Bearing on `quill`.** Genuinely new to the project, and mostly not applicable: there is no gradual tier
 and no ambient `dynamic`. The nearest decisions point the other way — an unhandled effect is a compile
 error, not a deferred one, and `HandledEffectEscapes` refuses rather than relaxes — while the one
 planned loosening, universe levels and level polymorphism, is fog (it would widen `Type : Type` into
@@ -471,11 +471,11 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/uhtxqi/worst_design_decis
 (u/dskippy score 100, u/imgroxx score 24, u/ebingdom score 30, u/umlcat score 37 defending C's separate
 null pointer).
 
-**Bearing on `fun`.** No ruling is needed because no `null` exists: `grep -w null std/*.fun` returns
-nothing, and absence is `Option(A)` with its own unit (`std/option.fun`), reached as `Std.Options.f` or
+**Bearing on `quill`.** No ruling is needed because no `null` exists: `grep -w null std/*.qll` returns
+nothing, and absence is `Option(A)` with its own unit (`std/option.qll`), reached as `Std.Options.f` or
 opened bare. The stance is therefore a consequence of the nominal-`Constructor` core rather than a decision
 anyone can point at — if a future FFI (fog: the library-versus-compiler-machinery boundary) drags a
-nullable foreign type in, that will be the first time `fun` has to state this position, and there is no
+nullable foreign type in, that will be the first time `quill` has to state this position, and there is no
 ticket for it.
 
 ### Underspecification buys optimizations and costs correctness
@@ -511,11 +511,11 @@ domains?, score 53, 168 comments,
 https://www.reddit.com/r/Compilers/comments/1r2mr96/is_it_theoretically_possible_to_design_a_language/,
 2026-02 (u/potzko2552 score 15, u/Sad-Grocery-1570 score 31, u/Inconstant_Moo score 2, u/flatfinger score 4).
 
-**Bearing on `fun`.** `fun` is on the specified side by construction and there is no open question about
+**Bearing on `quill`.** `quill` is on the specified side by construction and there is no open question about
 it: NbE defines the value, the one evaluation budget is shared between the checker and the evaluator, and
 exceeding it is a compile error naming the call rather than a runtime surprise. Termination is never
 checked and divergence is not an effect — recorded as a decision, alongside the rejection of a depth
-guard over evaluation — so the boundary `fun` draws is *bounded but specified*, not open. Nothing in the rejected list licenses
+guard over evaluation — so the boundary `quill` draws is *bounded but specified*, not open. Nothing in the rejected list licenses
 a program to behave differently from what the rules say.
 
 ### Conversion rules must fail loudly; predictable beats convenient
@@ -550,7 +550,7 @@ language you can think of., score 218, 422 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/jn3n4f/the_worst_features_of_every_language_you_can/,
 2020-11 (u/[deleted] score 110), plus `0 == "hello"` at score 69 in the same thread.
 
-**Bearing on `fun`.** Conversion is explicit and the accounting is visible: primitives return `I64` and
+**Bearing on `quill`.** Conversion is explicit and the accounting is visible: primitives return `I64` and
 the Prelude wraps them (Stage 11 increment 1), equality goes through `Eq` impls with type-specialized
 equality decided, and a fixity declaration attaches to a value rather than inventing a coercion rule. The
 nearest thing to a conversion policy is the member-lookup ruling — dotted paths resolve to the *last*
@@ -588,11 +588,11 @@ satire in Beyond Opinionated: Announcing The First Actually Bigoted Language, sc
 https://www.reddit.com/r/ProgrammingLanguages/comments/u2lrbo/beyond_opinionated_announcing_the_first_actually/,
 2022-04 (u/Athas score 38).
 
-**Bearing on `fun`.** The pattern already exists, and it is `Borrowed context`: building an id whose
+**Bearing on `quill`.** The pattern already exists, and it is `Borrowed context`: building an id whose
 scope set is copied from another syntax object is "the one deliberate way to break hygiene", written as an
 ordinary value construction rather than a mode, so every break is visible in the code that performs it and
 scope sets stay opaque to macros. Effects are the same shape — a `Heap` is named, `Discharge` drops only
-what cannot escape, and `HandledEffectEscapes` is a compile error. What `fun` has no analogue for is a
+what cannot escape, and `HandledEffectEscapes` is a compile error. What `quill` has no analogue for is a
 graded weakening (a `dynamic` tier), and the design map records nothing that would introduce one.
 
 ### Tooling and ecosystem are table stakes; design merit is not the differentiator
@@ -626,11 +626,11 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1f8uny3/how_did_skew_fail
 2024-09 (u/XDracam score 99, u/QuarkAnCoffee score 4, u/cxzuk score 21, u/punkbert score 33 contra,
 u/whatever73538 score 33).
 
-**Bearing on `fun`.** The project's own tooling answer is fog: the map's first-class compiler API item
+**Bearing on `quill`.** The project's own tooling answer is fog: the map's first-class compiler API item
 (an LSP, a REPL and a macro on one interface instead of re-implementing the elaborator) is undecided
-because no downstream consumer exists yet, and `Fun.Expand` cannot reference `Fun.Compiler` by design — today the
+because no downstream consumer exists yet, and `Quill.Expand` cannot reference `Quill.Compiler` by design — today the
 only bridge is the fixed `IMacroRuntime` adapter. The CLI is a stub that exits 1, so by this thread's own
-measure `fun` has not paid the entry fee; what it has instead is `docs/STATUS.md` as a single authority
+measure `quill` has not paid the entry fee; what it has instead is `docs/STATUS.md` as a single authority
 and a conformance suite (954 cases, 0 failed, 2026-09-29) that pins behaviour for whoever writes the tools
 next.
 
@@ -663,10 +663,10 @@ Crystal); niche collision in Odin 1.0 announced (and reflections), score 205, 18
 https://www.reddit.com/r/ProgrammingLanguages/comments/1upwaeg/odin_10_announced_and_reflections/, 2026-07
 (u/dgc-8 score 14).
 
-**Bearing on `fun`.** Genuinely new: no ticket in `docs/wayfinder/tickets/` concerns adoption, users, or a
+**Bearing on `quill`.** Genuinely new: no ticket in `docs/wayfinder/tickets/` concerns adoption, users, or a
 host application, and nothing in the design map states a purpose beyond the philosophy line. The nearest
 artefact is the conformance suite, which measures conformance rather than usefulness. If this idea is
-taken seriously the first action is not code — it is a sentence of the shape `fun` is for X, and no such
+taken seriously the first action is not code — it is a sentence of the shape `quill` is for X, and no such
 sentence exists in `README.md`'s philosophy block.
 
 ### Systems-language waves follow the backend toolchain, not the ideas
@@ -699,11 +699,11 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1v80op7/why_is_everyone_c
 the same wave in Odin 1.0 announced (and reflections), score 205, 187 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1upwaeg/odin_10_announced_and_reflections/, 2026-07.
 
-**Bearing on `fun`.** Not applicable on the axis's own terms — `fun` is not a systems language and has no
+**Bearing on `quill`.** Not applicable on the axis's own terms — `quill` is not a systems language and has no
 codegen target: the pipeline ends at `NbE → value`, the three-project split is about front-end layering,
 and the one wave-shaped decision (targeting the CLR) is the resolved fog item that produced the C# port
 and the deletion of the OCaml prototype. The transferable part is the observation that an infrastructure
-choice outlives its fashion: `Fun.Expand`'s inability to reference `Fun.Compiler` is a layering decision
+choice outlives its fashion: `Quill.Expand`'s inability to reference `Quill.Compiler` is a layering decision
 that will constrain tools long after the macro model settles.
 
 ### Governance and maintainer stability decide survivability from the inside
@@ -739,7 +739,7 @@ succeed as a language?, score 76, 89 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1f8uny3/how_did_skew_fail_to_succeed_as_a_language/,
 2024-09 (u/breck score 5).
 
-**Bearing on `fun`.** The governance `fun` has is written down and narrow: every ticket carries the same
+**Bearing on `quill`.** The governance `quill` has is written down and narrow: every ticket carries the same
 front matter (`status`, `labels`, `assignee`, `blocked_by`), 36 of the 202 tickets name an assignee
 (`glyh`) and the other 166 are unassigned, several carry the label `wayfinder:grilling`, and the map
 states in bold "**Needs the user (grilling), do not implement without it**" for a named set — which is a one-maintainer
@@ -781,7 +781,7 @@ language long after 1.0, score 93, 42 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/mudz94/has_there_ever_been_a_new_feature_added_to_a/,
 2021-04.
 
-**Bearing on `fun`.** There is no version number to be wrong about, and the substitute contract is
+**Bearing on `quill`.** There is no version number to be wrong about, and the substitute contract is
 stronger than one: `docs/STATUS.md` is the single authority — "when other docs disagree on completion
 status, STATUS wins" — and it is dated per entry (last updated 2026-09-29, 954 cases, 0 failed). The
 compatibility mechanism that exists is the differential gate: the OCaml prototype was deleted only once
@@ -819,8 +819,8 @@ abandoned it.
 https://www.reddit.com/r/ProgrammingLanguages/comments/w3juhj/carbon_has_well_documented_design_rationales/,
 2022-07.
 
-**Bearing on `fun`.** Already has it, in a form this thread would recognise:
-`docs/wayfinder/fun-design-map.md` splits the record into decided / open / fog, every ticket carries
+**Bearing on `quill`.** Already has it, in a form this thread would recognise:
+`docs/wayfinder/quill-design-map.md` splits the record into decided / open / fog, every ticket carries
 `status`, `labels` and `assignee` and closed ones add a `resolution:` field, and rejected decisions keep
 their reasons (the merged heap effect, rejected for the `Alloc`/`Read`/`Write` split; a separate type
 grammar; global coherence for impls — "unavailable when modules are values"). The staleness cost is not hypothetical
@@ -857,12 +857,12 @@ in-thread are courses and weekend implementations, which the claim itself says a
 **Source.** You can't practice language design, score 0, 58 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1i9euws/you_cant_practice_language_design/, 2025-01.
 
-**Bearing on `fun`.** `fun` has what the claim says is missing: a purpose, written as a priority ordering
+**Bearing on `quill`.** `quill` has what the claim says is missing: a purpose, written as a priority ordering
 — Consistency > Flexibility > Correctness — with three named consequences (one construct for many roles;
 types are values; type-case on open `Type` acceptable). That is a constraint set that decides real
 conflicts: `struct` = record/module/namespace is Consistency beating the Flexibility of separate
 constructs, and trading parametricity for practical power is Flexibility beating Correctness. Under this
-idea, `fun` is designing rather than practising — which raises the stakes of the fog items (the language's
+idea, `quill` is designing rather than practising — which raises the stakes of the fog items (the language's
 flavour after the macro model settles, universe levels) because they are the unconstrained part.
 
 ### Ask designers about their mistakes, not their principles
@@ -892,7 +892,7 @@ and Nim threads are exactly that, and they are this corpus's most useful materia
 https://www.reddit.com/r/ProgrammingLanguages/comments/11hil82/dont_listen_to_language_designers/, 2023-03
 (u/nrnrnr score 40, u/mixedCase_ score 89 contra, u/Mercerenies score 18, u/deadwisdom score 16).
 
-**Bearing on `fun`.** `fun` already collects mistakes with the reasons attached, which is this idea's
+**Bearing on `quill`.** `quill` already collects mistakes with the reasons attached, which is this idea's
 practical form: the design map's rejected list is a register of errors avoided (`M.(e)` local open;
 generated-symbol ids; first-match member lookup — it is last-match; a depth guard on evaluation;
 phantom type parameters on a generative former), each with the sentence that rules it out, and
@@ -937,12 +937,12 @@ counter in Why are you building a programming language?, score 107, 93 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/pi84fo/why_are_you_building_a_programming_language/,
 2021-09 (u/L8_4_Dinner score 9).
 
-**Bearing on `fun`.** This is the recorded method: the project's rules demand a measurement before a claim
+**Bearing on `quill`.** This is the recorded method: the project's rules demand a measurement before a claim
 ("Measure a gap in the runner before briefing a fork: one command settles what a paragraph cannot"),
 debug by instrumentation rather than by editing cases, and the deletion of the OCaml prototype was gated on
 a *measurement* — `port-fails: 0` over 763 programs — not on an argument. The Ecstasy counter applies in
-its own vocabulary: the three-project split and the strict phase rule are the things `fun` decided up
-front rather than prototyped, because a later retrofit would cross the `Fun.Expand`/`Fun.Compiler` boundary.
+its own vocabulary: the three-project split and the strict phase rule are the things `quill` decided up
+front rather than prototyped, because a later retrofit would cross the `Quill.Expand`/`Quill.Compiler` boundary.
 
 ### One front end: one representation, one parser, one implementation
 
@@ -978,14 +978,14 @@ and the IDE requirement in Lessons learned over the years., score 152, 76 commen
 https://www.reddit.com/r/ProgrammingLanguages/comments/kro7li/lessons_learned_over_the_years/, 2021-01
 (u/oilshell score 8, u/cxzuk score 37).
 
-**Bearing on `fun`.** Fun's answer to "a second implementation" was to remove it: `Surface.t` was deleted
+**Bearing on `quill`.** Fun's answer to "a second implementation" was to remove it: `Surface.t` was deleted
 as information-throwing duplication of `Syntax.t` (`delete-surface-ir.md`), and the OCaml prototype was
 deleted on 2026-09-25 once the port measured as its superset — one reader, one enforester, one elaborator,
 and no second implementation for any tool to disagree with. The retention side is visible in the pipeline
 itself: there is
 no separate intermediate representation between the reader and elaboration, and `Syntax` forms carry
 spans directly. The pressure that would recreate a second front end is the map's first-class compiler API fog
-item (an LSP wanting its own view), and `Fun.Expand`'s prohibition on referencing `Fun.Compiler` is what
+item (an LSP wanting its own view), and `Quill.Expand`'s prohibition on referencing `Quill.Compiler` is what
 keeps that pressure from being resolved cheaply.
 
 ### Self-hosting is a completeness test with a bootstrap tax
@@ -1013,7 +1013,7 @@ the "not necessary" position has no named successful counter-example in the corp
 **Tried by.** Zig (self-hosted 2022, cited) and Inko (its self-hosting compiler is a corpus thread in
 its own right); ABC's teaching compiler `not-abc` "eventually became self-hosting"; C, C++, Rust, Go,
 OCaml, Nim, Raku and Scala are the usual examples but are `[general knowledge, not from corpus]` here;
-`fun`'s own prelude is *not* in this category.
+`quill`'s own prelude is *not* in this category.
 
 **Source.** Value of self-hosting, score 19, 41 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1j60mgt/value_of_selfhosting/, 2025-03; How do you
@@ -1025,8 +1025,8 @@ https://www.reddit.com/r/Compilers/comments/tw7san/how_to_manage_language_versio
 https://www.reddit.com/r/ProgrammingLanguages/comments/ydrz3k/zig_is_selfhosted_now_whats_next/, 2022-10
 (body empty — cited as evidence of the milestone's salience only).
 
-**Bearing on `fun`.** `fun` is deliberately not self-hosting: the compiler is C# (`src/`), and the prelude
-in `std/` is written in `fun` but compiled by it — which is the half-test, and the reason
+**Bearing on `quill`.** `quill` is deliberately not self-hosting: the compiler is C# (`src/`), and the prelude
+in `std/` is written in `quill` but compiled by it — which is the half-test, and the reason
 `declare-bootstrap-compiler-interface-once.md` and `restructure-std-into-bootstrap-and-library.md` exist:
 the bootstrap layer and the library are separated so the prelude can grow without renegotiating the
 compiler's interface each time. The regression trap this idea warns about does not apply (a C# compiler
@@ -1080,7 +1080,7 @@ empiricism* (prototype and run real programs) against *design-it-in-first* (secu
 density cannot be added later); *constraints-make-design* (score 0) against *the sub's own practice* of
 hobby languages as design work; and *table-stakes adoption* (money and tooling decide) against
 *satisfies-a-demand* (design and positioning decide). A fourth, smaller one runs through this axis and the
-next: whether a macro-powered small core (fun's Stage 11 direction) merely relocates the complexity that
+next: whether a macro-powered small core (quill's Stage 11 direction) merely relocates the complexity that
 readers complain about.
 
 **What you would need to read to go further.** The primary literature on gradual typing (this corpus only

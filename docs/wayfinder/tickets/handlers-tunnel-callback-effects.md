@@ -1,6 +1,6 @@
 ---
 title: Handlers tunnel callback effects
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -22,7 +22,7 @@ handling** in [`CONTEXT.md`](../../../CONTEXT.md).
 
 ## Evidence — accidental handling today
 
-```fun
+```quill
 effect Exc = sig raise : I64 -> I64 end
 
 find = fn(pred : I64 -> I64, x : I64) ->
@@ -73,7 +73,7 @@ Decided with the tunneling rule; vocabulary **Handler scope**.
 Allowed — a continuation saved and resumed later (schedulers, async). Resuming
 re-enters the handler; one-shot is still checked at run time.
 
-```fun
+```quill
 match task(()) do
   v -> v
   | effect Async.pause _ -> push(queue, fn(u) -> resume(()))
@@ -84,7 +84,7 @@ pop(queue)(())
 Rejected at compile time — a closure whose row names an effect the handler
 handles, escaping that handler:
 
-```fun
+```quill
 leak = match 0 do
   v -> fn(u) -> perform Log.say("hi")
   | effect Log.say s -> resume(())

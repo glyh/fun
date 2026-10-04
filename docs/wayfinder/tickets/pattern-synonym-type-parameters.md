@@ -1,6 +1,6 @@
 ---
 title: "Should a pattern synonym's generalized types be supplyable?"
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -48,7 +48,7 @@ and each **use** instantiates them afresh. The port takes the **rigid-variable**
 the parameters are fresh metas solved by unification against the scrutinee's type, and
 nothing else. In particular a use cannot *supply* them:
 
-```fun
+```quill
 { M = module { pub pattern Two(a, b) = (a, b) }; open M;
   match ((1, True)) { M.Two(x, b) => x } }        -- works: the scrutinee's type solves them
 -- nothing like this exists today:
@@ -90,10 +90,10 @@ be reported unsolved" corner.
 
 - [a pattern synonym is checked, and generalizes where its type is unknown](port-pattern-synonym-generalizes.md) — the ruling and its Resolution, which
   states which reading the port took
-- `dotnet/src/Fun.Compiler/Elaborator.Patterns.cs` (`CollectSynonymMetas`,
-  `InstantiateSynonym`), `dotnet/src/Fun.Kernel/Core.Patterns.cs` (`VPatternSynonym`)
+- `dotnet/src/Quill.Compiler/Elaborator.Patterns.cs` (`CollectSynonymMetas`,
+  `InstantiateSynonym`), `dotnet/src/Quill.Kernel/Core.Patterns.cs` (`VPatternSynonym`)
 - the implicit machinery the other reading would reuse: `InsertImplicitArgs` /
-  `CheckUnderImplicit` in `dotnet/src/Fun.Compiler/Elaborator.Implicits.cs`
+  `CheckUnderImplicit` in `dotnet/src/Quill.Compiler/Elaborator.Implicits.cs`
   (paths in this section are stale — `dotnet/` was lifted to the repository root on 2026-09-26)
 
 ## Closed 2026-09-27
@@ -145,7 +145,7 @@ needing the first. No semantic difference was found in the ruled cases.
 **There is no fork report for this ticket.** Its first run was aborted mid-diagnosis (it had
 committed nothing, so that run was discarded); the resumed run committed the two green steps and
 the merge and then stopped responding, so no "what I did not do" exists for it. What was checked
-here instead: the diff of all five touched source files, the six cases' `.fun`/`.expect`, and the
+here instead: the diff of all five touched source files, the six cases' `.qll`/`.expect`, and the
 gate above. **Not verified by me:** the semantics of a synonym use nested inside another
 synonym's right-hand side. The code carries deliberate bookkeeping for it — the declaration saves
 and restores `SynonymTypeParams.Count` so a nested use's parameters are not reported as unsolved

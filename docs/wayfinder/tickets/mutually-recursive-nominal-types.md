@@ -1,6 +1,6 @@
 ---
 title: Mutually-recursive nominal type declarations
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed
@@ -26,7 +26,7 @@ in any order. Today only **self**-recursion works.
   references a **later-defined** type fails — `do type A = MkA(B); type B = MkB(A); … end`
   errors `UnboundVariable "B"` (and the reversed order errors on `A`). There is no
   `and` / type-group surface syntax (the `and`s in `enforest.ml` are OCaml, not
-  `fun`). Self-reference through a structural type works
+  `quill`). Self-reference through a structural type works
   (`List(Pattern * Expr)`, `List(struct … end)`); only *nominal↔nominal* mutual
   reference is blocked.
 - **Why it matters now.** It blocks the dedicated `Branch` ADT in

@@ -35,7 +35,7 @@ enclosing *function's* scope, and so its value binding, into the capture set.
 
 ## The program
 
-```fun
+```quill
 { F = fn(n : I64) { y = n; rec T = fn(A : Type) { enum { X(A) } }; T };
   a = F(1); b = F(2); take = fn(z : a(I64)) { 1 }; take(b(I64).X(3)) }
 ```
@@ -95,7 +95,7 @@ Example 3's answer is the model's own use case, not an inference — from
 [nominal identity is applicative by purity](nominal-identity-applicative-by-purity.md) under
 *"Applicative — sharing required"*:
 
-```fun
+```quill
 a = Set(I64, compare_i64); b = Set(I64, compare_i64)
 a.union(x_from_a, y_from_b)            -- must typecheck
 ```
@@ -130,7 +130,7 @@ ticketed separately.
 
 ## Reading
 
-- `dotnet/src/Fun.Compiler/Elaborator.RecTypes.cs` — `PredictCaptures`, `EnumCaptureLevels`,
+- `dotnet/src/Quill.Compiler/Elaborator.RecTypes.cs` — `PredictCaptures`, `EnumCaptureLevels`,
   `CompletePending`; `Elaborator.Enum.cs`
 - [the parametric nominal in a generative module](port-generative-former-nominal.md) and
   [the generative former's identity residue](port-generative-former-identity-residue.md) — what

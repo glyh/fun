@@ -1,10 +1,10 @@
 # Macro reference catalog
 
-This directory collects references for a future `fun` macro system. It keeps the original PDFs, but the Klister repository has been reduced to selected commentary, examples, and implementation notes so future searches do not have to wade through the full source tree.
+This directory collects references for a future `quill` macro system. It keeps the original PDFs, but the Klister repository has been reduced to selected commentary, examples, and implementation notes so future searches do not have to wade through the full source tree.
 
 ## Design summary
 
-- [`SUMMARY.md`](SUMMARY.md) — synthesized design summary for `fun`: hygienic regular-syntax macros, type-aware/type-providing macros, stuck expansion, phases, and compiler-structure impact.
+- [`SUMMARY.md`](SUMMARY.md) — synthesized design summary for `quill`: hygienic regular-syntax macros, type-aware/type-providing macros, stuck expansion, phases, and compiler-structure impact.
 - [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — staged implementation path for building the macro system without committing to parser or expansion dead ends.
 - [`STATUS.md`](STATUS.md) — authoritative macro-system completion status (the canonical source for stage completion).
 - [`STAGE_7_ENFORESTATION_PLAN.md`](STAGE_7_ENFORESTATION_PLAN.md) — concrete implementation plan for Stage 7 enforestation and regular syntax extension.

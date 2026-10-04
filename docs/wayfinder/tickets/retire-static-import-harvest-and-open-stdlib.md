@@ -1,6 +1,6 @@
 ---
 title: Retire load_imports_in_terms and the open_stdlib survivor
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

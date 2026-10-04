@@ -1,6 +1,6 @@
 ---
 title: The prelude spellings the ABI declaration leaves behind
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -14,7 +14,7 @@ blocked_by: []
 
 Opened 2026-09-27 while closing
 [declare the bootstrap↔compiler interface once](declare-bootstrap-compiler-interface-once.md).
-That ticket's mechanism landed: `src/Fun.Kernel/PreludeAbi.cs` holds 160 names and
+That ticket's mechanism landed: `src/Quill.Kernel/PreludeAbi.cs` holds 160 names and
 `Prelude.Load` verifies them eagerly, so no prelude name is spelled outside the declaration. This
 ticket is the residue — the handful of decisions the declaration deliberately did not take, each of
 which is a *ruling* rather than a measurement.
@@ -26,7 +26,7 @@ The declaration carries `Id` as `Syntax.Id`. But the surface also spells `Id` as
 `HoleTokens`). **Ruled: they are one entry, and that is the design rather than an accident** — a
 macro signature writes the kind as a *type* (`macro m(x : Id)`), so the type's name is the only
 spelling the surface has. `Enforest.Roles.cs:564-570` resolves all of them that way, and the other
-six arrive through the same published builder (`std/bootstrap.fun`'s `hole_kind`, read positionally
+six arrive through the same published builder (`std/bootstrap.qll`'s `hole_kind`, read positionally
 by `Reflection.cs:62`). No change follows.
 
 ## 2. `Block` stays spelled — **decided 2026-10-01: declared, and done the same day**
@@ -35,7 +35,7 @@ by `Reflection.cs:62`). No change follows.
 compiler hard-coded**: `Enforest.Roles.cs:565` matched the string `"Block"` while its six siblings
 matched ABI constants, so a rename of it in the prelude was silent. Ruled: declare it like the
 others. Landed in three places — `pub Block = Expr;` beside the prelude's other aliases
-(`std/bootstrap.fun`, the `Decls` precedent), `PreludeAbi.Types.Syntax.Block`, and the mapping
+(`std/bootstrap.qll`, the `Decls` precedent), `PreludeAbi.Types.Syntax.Block`, and the mapping
 using it. Verified: `macro m(b : Block) { quote($b) }; m({ 7 })` → `VALUE 7`; renaming the prelude's
 name fails the load with `PreludeAbi declares Syntax.Block, which the prelude std/bootstrap does not
 define`; suite `958 cases, 0 failed`, xUnit 209/209.
@@ -56,7 +56,7 @@ So that a later sweep does not re-open them:
 
 The declaration had never been exercised against the restructured prelude when it landed. It has
 been now: the [`std` split](restructure-std-into-bootstrap-and-library.md) merged as `16f9948`
-(`bootstrap.fun`, `list.fun`, `lib.fun`, `type.fun`, `stage2.fun`), and the eager check was
+(`bootstrap.qll`, `list.qll`, `lib.qll`, `type.qll`, `stage2.qll`), and the eager check was
 demonstrated against the renamed unit by breaking one constant and rebuilding:
 
 ```

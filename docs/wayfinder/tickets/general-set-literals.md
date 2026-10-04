@@ -1,6 +1,6 @@
 ---
 title: One set literal; effect rows and bound sets are sets pinned by position
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: open
@@ -13,7 +13,7 @@ blocked_by:
 Proposed by the user (2026-09-16), deferred: `{a, b}` is one first-class set
 literal, `Set(A)`; a position only pins the element type.
 
-```fun
+```quill
 s = {1, 2, 3}              // Set(I64)
 A ->{Log, Exc} B           // position expects Set(Effect)
 fn[T : {Eq, Show}](…)      // position expects Set(Trait)

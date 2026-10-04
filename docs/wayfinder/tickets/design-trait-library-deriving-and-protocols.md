@@ -1,6 +1,6 @@
 ---
 title: Trait library deriving and protocols
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: open
@@ -17,7 +17,7 @@ type-case where possible rather than compiler magic.
 
 ## Context
 
-- The [map](../fun-design-map.md) and [`docs/STATUS.md`](../../STATUS.md) record trait work
+- The [map](../quill-design-map.md) and [`docs/STATUS.md`](../../STATUS.md) record trait work
   as mostly complete; detail in [traits](../topics/traits.md) and
   [trait-module-stdlib](../topics/trait-module-stdlib.md).
 - Remaining milestones include explicit deriving/fallback behaviour and more
@@ -71,7 +71,7 @@ Every precedent pairs them the other way:
   always with a way to name one: pass the implicit module explicitly, or a named
   instance.
 
-`fun` has chosen scoped resolution *and* forbidden naming, which is the
+`quill` has chosen scoped resolution *and* forbidden naming, which is the
 combination none of them use. That is what makes the mandatory-open tax
 unavoidable rather than merely the default: when scope does not give you the impl
 you want, there is nothing else to say.

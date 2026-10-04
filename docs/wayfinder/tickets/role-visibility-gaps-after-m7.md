@@ -1,6 +1,6 @@
 ---
 title: Role visibility gaps left by M7
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

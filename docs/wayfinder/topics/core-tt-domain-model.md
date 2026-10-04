@@ -1,6 +1,6 @@
 ---
 title: Domain model — the elaborate ↔ evaluate boundary
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 ---
 
 # Domain model — the elaborate ↔ evaluate boundary
@@ -343,7 +343,7 @@ attack on first-class modules. It was a conflation:
   that **captures its enclosing context**, like a closure. Verified: it closes over
   an outer binding and over a lambda parameter, and survives being returned from
   a function. Its term is anchored, necessarily and correctly.
-- A **compilation unit** is a `.fun` file reached by `import`. It has no
+- A **compilation unit** is a `.qll` file reached by `import`. It has no
   enclosing context to capture. The importer's context is an artefact of how the
   elaborator threads its context, not something the unit asked for.
 

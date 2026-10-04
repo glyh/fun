@@ -1,6 +1,6 @@
 ---
 title: A pattern synonym cannot be declared in a block
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -38,5 +38,5 @@ Closed after re-running both runners on `main @ d58af64`.
 `dune test --root . test/conformance` reports `690 cases, 0 failed, 19 known
 prototype divergences`, so `values/pattern-synonym-in-block` fails in the
 prototype as listed (`Enforest_util.Error("unexpected token in expression")`); `cd
-dotnet && dotnet run --project test/Fun.Conformance --no-build` passes it (not
+dotnet && dotnet run --project test/Quill.Conformance --no-build` passes it (not
 among the 13 unrelated residue failures), so the port is correct.

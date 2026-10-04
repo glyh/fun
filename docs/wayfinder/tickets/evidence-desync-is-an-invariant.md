@@ -1,6 +1,6 @@
 ---
 title: A refinement/evidence desync is an invariant, not a language error
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: open
@@ -30,7 +30,7 @@ produces:
 ELAB missing implementation of `Size`
 ```
 
-on `values/type-case-evidence.fun`, which reads as **the user's** mistake. The branch asked for
+on `values/type-case-evidence.qll`, which reads as **the user's** mistake. The branch asked for
 `Size(Char)`, the entry still said `Size(A)`, and the failure was reported as a missing impl. That
 is the wrong-blame failure mode: a future refinement channel that forgets the evidence list will
 look like a user error.
@@ -59,7 +59,7 @@ because that one *is* the user's.
 
 ## Acceptance
 
-- Ablating the `Evidence` rewrite (`Evidence = ctx.Evidence`) turns `values/type-case-evidence.fun`'s
+- Ablating the `Evidence` rewrite (`Evidence = ctx.Evidence`) turns `values/type-case-evidence.qll`'s
   failure from `missing implementation of \`Size\`` into the invariant message above, and the suite
   still reports `961 cases, 0 failed` when nothing is ablated.
 - A program with no dictionary in scope at all still reports `missing implementation of …` (the
@@ -73,7 +73,7 @@ Run to find a program that distinguishes "rewrite the entries" from "key the loo
 
 | probe | program | result |
 |---|---|---|
-| bound entry found in a branch | the ticket's own `type-case-evidence.fun` | `VALUE 9`; ablate → `missing implementation of Size` |
+| bound entry found in a branch | the ticket's own `type-case-evidence.qll` | `VALUE 9`; ablate → `missing implementation of Size` |
 | demand from a literal, not the parameter | `match (A) { Char => Size.size('c'), _ => 0 }` with an impl | `VALUE 7` — **both routes hold the same dictionary**, so it cannot show which fired |
 | pass a dictionary in explicitly | `f[Char][module { size = fn(c) { 100 } }]('a')` | `ELAB type mismatch: cannot unify VTraitDict with VModule` — a dictionary cannot be written literally, so two dictionaries for one key can never compete |
 

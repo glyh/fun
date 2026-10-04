@@ -1,6 +1,6 @@
 ---
 title: Annotation types use a separate grammar that ignores user operators
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -20,7 +20,7 @@ Types are values, but a type written in a binding or parameter annotation
 (`pub infix (~>) arrow ($a, $b) { $a -> $b can _ }`) works where the expression
 grammar reads the type and fails in annotations:
 
-```fun
+```quill
 Callback = Unit ~> I64;                   // works (expression grammar)
 wrap = fn(g : Unit ~> I64) { g(()) }      // parse error (type grammar)
 ```
@@ -39,7 +39,7 @@ pair of types vs the pair type — the same problem `sig` vs `module` had). So:
 - **`*` is only multiplication.** No product-type reading anywhere.
 - **Tuple types are written `Tuple(n, T1, …, Tn)`**, a built-in whose type is an
   ordinary dependent function computing its own arity (the printf trick):
-  ```fun
+  ```quill
   Arrows = fn(k : I64) : Type { if (k == 0) { Type } else { Type -> Arrows(k - 1) } };
   Tuple : (n : I64) -> Arrows(n)
   p : Tuple(3, I64, Bool, String) = (1, True, "a")   // p.2 : String

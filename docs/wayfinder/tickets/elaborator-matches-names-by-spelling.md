@@ -1,6 +1,6 @@
 ---
 title: The elaborator still matches `EffectRow` and `stx_` names by spelling
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

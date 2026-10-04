@@ -1,6 +1,6 @@
 ---
 title: Macro type binders should be explicit
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -17,7 +17,7 @@ blocked_by:
 A name inside a macro annotation is always a reference. A macro binds type
 parameters the way a function does, in `[…]`:
 
-```fun
+```quill
 macro m[A](x) : Expr(A) -> …     -- A bound here; Expr(A) refers to it
 macro n(x) : Expr(I64) -> …      -- constraint
 macro k(x) : Expr(Strng) -> …    -- error: unbound Strng

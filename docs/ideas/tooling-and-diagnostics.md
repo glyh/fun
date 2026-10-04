@@ -50,7 +50,7 @@ a specific language to a specific side.
 **Source.** Should error messages be rule- or action-oriented?, score 83, 45 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1fai9o3/should_error_messages_be_rule_or_actionoriented/, 2024-09.
 
-**Bearing on `fun`.** Undecided and unowned: there is no ticket for diagnostic wording. The split
+**Bearing on `quill`.** Undecided and unowned: there is no ticket for diagnostic wording. The split
 that exists is deliberate — `.expect` may only be the token `error`, so wording is *not* pinned by
 the conformance suite, while nine xUnit assertions compare an exact `Message`
 (`PrimitivesTests.cs:46,69,89`, `EffectTests.cs:50`, `PreludeTests.cs:40`, `InterleavingTests.cs:19`,
@@ -84,7 +84,7 @@ but not named.
 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/i2hfti/strategies_for_displaying_type_errors_with_global/, 2020-08.
 
-**Bearing on `fun`.** Genuinely new, and blocked on the same fog item as everything else in this
+**Bearing on `quill`.** Genuinely new, and blocked on the same fog item as everything else in this
 section: an elaborator error carries `Budget._site` on exactly two variants
 (`EvaluationBudgetExceeded`, `EvaluationFailed`) and there is no origin chain at all, so the
 two-point shape needs a span on the form being checked first. See the map's *Diagnostics polish
@@ -116,7 +116,7 @@ thread.
 **Source.** Creating better error messages, score 45, 13 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/q3yk6x/creating_better_error_messages/, 2021-10.
 
-**Bearing on `fun`.** Directly actionable at the existing funnel: `src/` has ~130
+**Bearing on `quill`.** Directly actionable at the existing funnel: `src/` has ~130
 `new FunException(` sites, and the open
 `specify-stage-12-macro-diagnostics-and-expansion-ux.md` already carries a preferred rewording
 ("macro `n` promises Expr(I64), but Bool is expected here") instead of the raw `cannot unify I64
@@ -146,7 +146,7 @@ article, only its headline claim.
 **Source.** Designing type inference for high quality type errors, score 72, 12 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1ipiams/designing_type_inference_for_high_quality_type_errors/, 2025-02.
 
-**Bearing on `fun`.** Has it differently: `fun` already decided bidirectional elaboration with
+**Bearing on `quill`.** Has it differently: `quill` already decided bidirectional elaboration with
 NbE, and `Unify.cs` reports `cannot unify {Describe(left)} with {Describe(right)}` — a
 constraint-shaped message. The room is not in the algorithm but in where the exception is caught
 and what form is on the budget when it is.
@@ -178,7 +178,7 @@ nobody is claimed to have designed a grammar for localisability.
 **Source.** Can a language be too dense?, score 36, 56 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/17be7k0/can_a_language_be_too_dense/, 2023-10.
 
-**Bearing on `fun`.** Open and unowned: the map's fog item on *the surface's flavour after the
+**Bearing on `quill`.** Open and unowned: the map's fog item on *the surface's flavour after the
 macro model settles* is where the question would be asked, and no ticket covers it. For now the
 limiting factor is not density but the dropped location — `Driver.cs:38-46` re-wraps
 `FunException(e.Message)`, discarding whatever span existed upstream — so a span policy comes
@@ -210,7 +210,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/vd86ba/trying_to_do_error
 (the same post also supplies the counter-case: Go's `unexpected validVariableName at end of
 statement`, which blames the token after the typo).
 
-**Bearing on `fun`.** Genuinely new. It would land on the stage-12 ticket's open question — "how
+**Bearing on `quill`.** Genuinely new. It would land on the stage-12 ticket's open question — "how
 they reach the user (REPL, loader, driver)" — and it needs a channel that does not exist yet:
 `Elab_error` and `FunException` are errors only, with no non-fatal diagnostic kind, so even the
 warning the divergence review wants (an unguarded recursive occurrence is uninhabited) has nowhere
@@ -259,9 +259,9 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/ce5o8d/good_design_patter
 Any good resources for creating actually modern parsers?, score 41, 12 comments,
 https://www.reddit.com/r/Compilers/comments/1ejabxw/any_good_resources_for_creating_actually_modern/, 2024-08.
 
-**Bearing on `fun`.** Open, and already written down: ticket `scope-enforester-improvements.md`
+**Bearing on `quill`.** Open, and already written down: ticket `scope-enforester-improvements.md`
 item 1 is "structured errors and fault-tolerant parsing (spans, recovery, incremental)". The
-measured blocker is positions, not recovery — `src/Fun.Expand` has 173 `throw` sites carrying no
+measured blocker is positions, not recovery — `src/Quill.Expand` has 173 `throw` sites carrying no
 span, and `Driver.cs:38-46` re-wraps them as `FunException(e.Message)`, discarding the location
 that existed upstream.
 
@@ -297,8 +297,8 @@ score 12). Also: How do you get good error reporting once you've stripped out th
 17, 48 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1sfcdai/how_do_you_get_good_error_reporting_once_youve/, 2026-04.
 
-**Bearing on `fun`.** Half-built, and the map re-measured it 2026-10-01: `SourceSpan` lives in
-`Fun.Kernel`, every `Syntax` node and every `Id(Name, SourceSpan, ScopeSet)` already carries one,
+**Bearing on `quill`.** Half-built, and the map re-measured it 2026-10-01: `SourceSpan` lives in
+`Quill.Kernel`, every `Syntax` node and every `Id(Name, SourceSpan, ScopeSet)` already carries one,
 and the reflection round trip must preserve it — but `Pattern` (all fourteen variants) and
 `EffectRow` have none, `Budget._site` covers only two error variants, and the 130
 `new FunException(` sites bucket 73 (span in scope) / 35 (must be threaded) / 22 (no source form
@@ -328,7 +328,7 @@ macro-debugging complaint that motivates it is in another.
 https://www.reddit.com/r/ProgrammingLanguages/comments/1n41akt/macros_good_bad_or_necessary/, 2025-08
 (comment, score 11, on debugging generated code).
 
-**Bearing on `fun`.** Open ticket, by name:
+**Bearing on `quill`.** Open ticket, by name:
 `specify-stage-12-macro-diagnostics-and-expansion-ux.md`, whose carried-over list is literally
 "structured error spans, traceable expansion output, and user-facing macro error messages". The
 good news is structural: a syntax object is *a form, its span, and identifiers carrying scope
@@ -353,13 +353,13 @@ linking.
 **Maturity.** shipped — this is what debuggable evaluators do; the counter-consideration (mangled
 keys are hash-table keys and length costs time) is the subject of the cited thread.
 
-**Tried by.** the thread names C++ as the negative case; `fun` carries binder names "for errors
+**Tried by.** the thread names C++ as the negative case; `quill` carries binder names "for errors
 only".
 
 **Source.** Alternatives to name mangling?, score 21, 12 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/rt3bm9/alternatives_to_name_mangling/, 2022-01.
 
-**Bearing on `fun`.** Already has it: `budget-error-names-no-source-call.md` is closed and
+**Bearing on `quill`.** Already has it: `budget-error-names-no-source-call.md` is closed and
 implemented — "core lambdas have no names and the error has no span" became `Fix/VFix/HFix` carry
 their binder's name, for errors only. The sibling ticket `declaration-binders-keep-written-names.md`
 is the surface half of the same decision.
@@ -397,11 +397,11 @@ comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/10u74ts/why_dont_more_languages_implement_lispstyle/, 2023-02
 (top comment score 61; comment tree partially retrieved).
 
-**Bearing on `fun`.** Greenfield with sharp constraints: `src/Fun.Cli` prints "the .NET port has
+**Bearing on `quill`.** Greenfield with sharp constraints: `src/Quill.Cli` prints "the .NET port has
 no entry point yet" and exits 1, and `Driver`'s own doc comment already calls itself "the pipeline
 as the REPL runs it". Two decided properties pull against live redefinition — compilation units
 are base-anchored and not first-class, and prelude syntax arrives under a strict phase rule (only
-where `std` is opened, in statement order) — so a `fun` REPL would be re-running elaboration over
+where `std` is opened, in statement order) — so a `quill` REPL would be re-running elaboration over
 a growing context, not swapping entries in an image.
 
 ### A REPL needs a second evaluator or a persistent world
@@ -432,7 +432,7 @@ comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/10u74ts/why_dont_more_languages_implement_lispstyle/, 2023-02
 (comment score 11).
 
-**Bearing on `fun`.** Favourable and specific: `fun` already has one evaluator shared by the
+**Bearing on `quill`.** Favourable and specific: `quill` already has one evaluator shared by the
 checker (`Kont` frames, one evaluation budget), so answer (a) is *not* a second implementation —
 the cost moves to state: what a session's `Context`, `Base context` and accumulated `open`
 bindings are when the next input elaborates against them. The suite-redundancy ticket supplies the
@@ -461,8 +461,8 @@ changes.
 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1ha9l2b/repl_with_syntax_highlighting_auto_indentation/, 2024-12.
 
-**Bearing on `fun`.** Genuinely new and entirely downstream of the CLI existing. It shares the
-cost with every other highlighter below: `fun`'s operators are not keywords — they are entries in
+**Bearing on `quill`.** Genuinely new and entirely downstream of the CLI existing. It shares the
+cost with every other highlighter below: `quill`'s operators are not keywords — they are entries in
 a scope-aware binding table, seeded per unit — so correct highlighting is a resolver query, not a
 regex.
 
@@ -505,7 +505,7 @@ comments, https://www.reddit.com/r/ProgrammingLanguages/comments/1pwep69/gibberi
 Language servers suck the joy out of language implementation, score 120, 68 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1nukes9/language_servers_suck_the_joy_out_of_language/, 2025-10.
 
-**Bearing on `fun`.** Has it differently, and the difference is a decision already recorded: `fun`
+**Bearing on `quill`.** Has it differently, and the difference is a decision already recorded: `quill`
 deleted its surface IR on purpose (`delete-surface-ir`, `syntax-vs-surface-ir-layer`), so the
 compiler reads exactly one representation. A lossless trivia-preserving tree for the editor would
 be a *third* representation — the thing the project removed. The realistic seam is the one
@@ -542,7 +542,7 @@ How come does ClangFormat appear to be able to format my programming language?, 
 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/is2ydp/how_come_does_clangformat_appear_to_be_able_to/, 2020-09.
 
-**Bearing on `fun`.** Open, and unusually sharp here: operators are unified into a scope-aware
+**Bearing on `quill`.** Open, and unusually sharp here: operators are unified into a scope-aware
 binding table (`unify-operators-into-scope-aware-binding-table.md`), prelude operator demotion
 means an operator is a `pub infix` declaration in `std`, and the strict phase rule means an
 imported unit gets no prelude syntax. A correct highlighter therefore has to *elaborate bindings
@@ -584,9 +584,9 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/tmbuwh/resources_on_concu
 plus Parser and Lexer bike-shedding, score 36, 36 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/w9eygt/parser_and_lexer_bikeshedding/, 2022-07.
 
-**Bearing on `fun`.** Genuinely new; the nearest existing machinery is `Loader`'s per-process
+**Bearing on `quill`.** Genuinely new; the nearest existing machinery is `Loader`'s per-process
 per-unit caches, which are exactly what a background run would have to copy rather than mutate.
-The discard step is cheap for `fun` because elaboration of a unit is a pure function of its
+The discard step is cheap for `quill` because elaboration of a unit is a pure function of its
 context — but the map's first-class-API guardrail still applies: every question that evaluates
 spends from the one evaluation budget, so a speculative background run is spending the user's
 budget on work that may be thrown away.
@@ -616,7 +616,7 @@ architecture pattern for building language with LSP in mind?).
 and such so quickly?, score 56, 11 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/zmky16/how_does_a_language_server_for_a_text_editor/, 2022-12.
 
-**Bearing on `fun`.** Depends on the fog item by name: a symbol table is a projection of a
+**Bearing on `quill`.** Depends on the fog item by name: a symbol table is a projection of a
 checked `Context`, and the map's *First-class compiler API* says the ambition is that "a tool, an
 LSP, a REPL and a macro all sit on one surface instead of re-implementing the elaborator". Until
 that exists, a navigation feature can only re-run `Driver.Elaborate`, whose doc comment says its
@@ -656,7 +656,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1qg42ci/kip_a_programming
 **Source.** The tooling is the language?, score 70, 36 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/vvhk20/the_tooling_is_the_language/, 2022-07.
 
-**Bearing on `fun`.** Has it in part already, by decisions rather than by ticket: operators are
+**Bearing on `quill`.** Has it in part already, by decisions rather than by ticket: operators are
 unified into a scope-aware binding table and the strict phase rule governs what an imported unit
 may see — both tooling-facing choices made at design time — so a correct highlighter or completer
 has to elaborate bindings per unit, a client of the fogged first-class API. What is open is the
@@ -708,9 +708,9 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/lz8skk/language_server_bu
 against it, Language servers suck the joy out of language implementation, score 120, 68 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1nukes9/language_servers_suck_the_joy_out_of_language/, 2025-10.
 
-**Bearing on `fun`.** This *is* the fog item: `docs/wayfinder/topics/first-class-elaborator-api.md`,
+**Bearing on `quill`.** This *is* the fog item: `docs/wayfinder/topics/first-class-elaborator-api.md`,
 staging step 5 is "build the LSP, the REPL and the CLI on that one API rather than beside it",
-with the recorded constraint that `Fun.Expand` cannot reference `Fun.Compiler` and today exactly
+with the recorded constraint that `Quill.Expand` cannot reference `Quill.Compiler` and today exactly
 one adapter (`IMacroRuntime`) crosses the line.
 
 ### Incremental compilation for editor latency — the query graph from the tooling side
@@ -755,9 +755,9 @@ https://www.reddit.com/r/Compilers/comments/1v951kq/inside_zigs_incremental_comp
 Neither of the two directly opposed threads had its body or comments captured — only the titles
 and scores, which is the thinnest evidence in this document.
 
-**Bearing on `fun`.** Named and deliberately parked: the map's *Content-addressed codebase*
+**Bearing on `quill`.** Named and deliberately parked: the map's *Content-addressed codebase*
 fog item describes Unison's hash-keyed caching as the same move, and records two obstacles
-specific to `fun` — scope sets are per-run integer sets needing a scope-normal form for hashing,
+specific to `quill` — scope sets are per-run integer sets needing a scope-normal form for hashing,
 and the interleaved driver makes a cache key a *(definition, context)* pair rather than one hash.
 `Loader`'s per-process dictionaries are where the current non-incremental behaviour lives.
 
@@ -790,7 +790,7 @@ author unsure whether any language does it; no example is produced in the retrie
 52, 29 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1blldxz/why_dont_most_programming_languages_expose_their/, 2024-03.
 
-**Bearing on `fun`.** The cheapest version already exists and the topic says so: reflection over
+**Bearing on `quill`.** The cheapest version already exists and the topic says so: reflection over
 `Expr`/`Decl`/`Pattern` is total, and "a macro that merely reflects and rebuilds changes nothing"
 — name, span and scope survive the round trip. `first-class-elaborator-api.md` stages this as
 step 1 ("finish reflection … it needs no boundary crossing") and explicitly names the rival
@@ -821,7 +821,7 @@ first attempt failed at it; no shipping language is claimed.
 **Source.** A syntax for easier refactoring, score 31, 41 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/10jw33h/a_syntax_for_easier_refactoring/, 2023-01.
 
-**Bearing on `fun`.** `fun` has the invariant rename tooling needs: M12, "no name is found by its
+**Bearing on `quill`.** `quill` has the invariant rename tooling needs: M12, "no name is found by its
 spelling alone" (macro model), enforced since `resolved-names-forgeable.md` closed and
 `elaborator-matches-names-by-spelling.md` deleted both spelling dispatches — an `Id` is certified
 by its scope set, so a rename rewrites the displayed name and resolution is untouched. What is
@@ -847,13 +847,13 @@ unable to see.
 
 **Maturity.** shipped — the described `.ref` workflow is a working project's current practice.
 
-**Tried by.** the thread author's language project; `fun`'s conformance suite.
+**Tried by.** the thread author's language project; `quill`'s conformance suite.
 
 **Source.** What testing strategies are you using for your language project?, score 30, 42
 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1juwzlg/what_testing_strategies_are_you_using_for_your/, 2025-04.
 
-**Bearing on `fun`.** Already has it, and the split is the interesting part: `.expect` may be a
+**Bearing on `quill`.** Already has it, and the split is the interesting part: `.expect` may be a
 value, a constructor name, `ok`, or `error`, and "error wording is not pinned — it is
 implementation-specific", so exact messages belong to xUnit instead (`expect_elab_error`/
 `expect_expand_error`, an exact `Message`, a type rather than a value). The suite is 961 cases,
@@ -876,16 +876,16 @@ cannot tell you which one is right; the thread's own answer is "know your target
 semantics well, write lots of tests, do fuzzing", i.e. the oracle comes from somewhere else
 anyway.
 
-**Maturity.** shipped — practised in the thread; `fun` ran it end-to-end during the .NET port.
+**Maturity.** shipped — practised in the thread; `quill` ran it end-to-end during the .NET port.
 
-**Tried by.** the thread author (interpreter / JS / WebAssembly backends); `fun` (prototype vs
+**Tried by.** the thread author (interpreter / JS / WebAssembly backends); `quill` (prototype vs
 port, `port-fails: 0`, 34 disagreements where the prototype was wrong).
 
 **Source.** Ensuring identical behavior between my compiler and interpreter?, score 56, 26
 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/11mpom9/ensuring_identical_behavior_between_my_compiler/, 2023-03.
 
-**Bearing on `fun`.** Was had, now lapsed: `scripts/differential.sh` and the OCaml prototype were
+**Bearing on `quill`.** Was had, now lapsed: `scripts/differential.sh` and the OCaml prototype were
 deleted on 2026-09-25 with the divergence list preserved as
 `test/conformance/prototype-divergences.txt`. There is one implementation again, so the only
 remaining differential axis is *mutation* — inject a defect, check the suite catches it — which
@@ -918,7 +918,7 @@ https://www.reddit.com/r/Compilers/comments/1mhdmyc/how_to_fuzz_compiler_with_ty
 How to use fuzzing to test an arbitrary programming language?, score 32, 18 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/l0doct/how_to_use_fuzzing_to_test_an_arbitrary/, 2021-01.
 
-**Bearing on `fun`.** The analogue already exists in-repo and closed on 2026-10-01: a *mutation*
+**Bearing on `quill`.** The analogue already exists in-repo and closed on 2026-10-01: a *mutation*
 sweep, where the "generated program" is a defect injected into `src/` and the oracle is whether a
 conformance case flips. Its finding is the same shape as the fuzzing threads' — the untested
 surface is not the parser but narrow paths (the budget limit check, a ref that is not a
@@ -970,7 +970,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/k9u35g/whats_an_useful_de
 Compilers should help developers optimize their code, score 52, 27 comments,
 https://www.reddit.com/r/Compilers/comments/1vdv6w9/compilers_should_help_developers_optimize_their/, 2026-08.
 
-**Bearing on `fun`.** Half a seed exists: `Driver.Describe(Value)` is documented as "what a
+**Bearing on `quill`.** Half a seed exists: `Driver.Describe(Value)` is documented as "what a
 program produced, as far as the conformance suite may observe it … anything else is a debug form
 no case may depend on" — deliberately too narrow to build this on. The macro half is inside the
 open stage-12 ticket ("traceable expansion output"), and the type half wants an elaborator query
@@ -1010,7 +1010,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/c39ib1/what_do_you_consid
 thread, score 42, 53 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/pxytj7/why_dont_more_languages_have_firstclass_testing/, 2022-03).
 
-**Bearing on `fun`.** Missing, and not on any ticket: `std/` carries no doc comments (0 hits),
+**Bearing on `quill`.** Missing, and not on any ticket: `std/` carries no doc comments (0 hits),
 `docs/STATUS.md` is hand-maintained prose, and the only examples that are guaranteed to work are
 the 961 conformance cases — which are tests, not documentation. The nearest existing link in the
 other direction is that `.expect` files are already "the language's behaviour as the domain model
@@ -1050,7 +1050,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/11ymq2f/help_us_improve_t
 What I wish compiler books would cover, score 146, 36 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/gavu8z/what_i_wish_compiler_books_would_cover/, 2020-04.
 
-**Bearing on `fun`.** The artefacts do not exist: no error catalogue to link from a message, no
+**Bearing on `quill`.** The artefacts do not exist: no error catalogue to link from a message, no
 `--explain`, and the conformance runner prints nothing at all for an `error` case. The stage-12
 ticket's third bullet — "user-facing macro error messages" — is the first place this would be
 written. The measurement half is out of reach while wording is unpinned: a study needs candidate
@@ -1134,13 +1134,13 @@ is marked unverified.
 **Where the disagreement is real and productive.** Five contested pairs are recorded as entries
 rather than resolved: wording style; message vocabulary (one paper, two opposite readings);
 LSP-inside-the-compiler vs LSP-as-a-burden; query-based vs against; and tooling as a design-time
-constraint vs tooling built after popularity. For `fun` the query pair is
+constraint vs tooling built after popularity. For `quill` the query pair is
 already answered in effect — the map parks it as fog with two named obstacles — so the useful
 next step there is not an argument but the measurement the map asks for: compile time attributed,
 or a hash-shaped library story wanted.
 
 **What would need reading outside this corpus.** Any decision about where a span lives should
-start from `docs/wayfinder/fun-design-map.md`'s 2026-10-01 re-measurement (it retracted an
+start from `docs/wayfinder/quill-design-map.md`'s 2026-10-01 re-measurement (it retracted an
 earlier premise on all three counts) rather than from these threads — the corpus has no thread
 about threading positions through a dependently typed elaborator at all, and the nearest thing
 (oil's span-id comment) is about a tree-walking interpreter.
@@ -1167,5 +1167,5 @@ settles that pair.
 
 **Not resolved with the material available.** Whether the rule- vs action-oriented wording
 question has an answer anywhere: its tree was not fetched in any directory, so its `contested`
-tag still rests on a title alone. And no comment in this axis contradicted any `fun` completion
+tag still rests on a title alone. And no comment in this axis contradicted any `quill` completion
 claim; `docs/STATUS.md` was the authority where a claim and the doc could differ.

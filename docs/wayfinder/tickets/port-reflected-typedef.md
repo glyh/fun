@@ -22,7 +22,7 @@ call on this ticket, and the reason is better than the one it replaced.
 - `lib/semantic/typecheck/elab_prelude.ml:292` —
   `pub syntax type : Decl { type $(r : List(TokenTree)) => { type_decls($r) } }`, over the
   public `type_decls` macro.
-- `dotnet/std/stage2.fun` — the same, `type_name`/`type_params`/`type_member`/`type_opens`/
+- `dotnet/std/stage2.qll` — the same, `type_name`/`type_params`/`type_member`/`type_opens`/
   `type_exports` building `rec … and …` enums plus their `export` and `open`.
 
 And the surface nodes it replaced are already gone: [ADTs are declared by let
@@ -40,7 +40,7 @@ produce.
 
 ## Action
 
-`dotnet/src/Fun.Compiler/Reflection.cs:762`'s refusal becomes a **named macro error**
+`dotnet/src/Quill.Compiler/Reflection.cs:762`'s refusal becomes a **named macro error**
 (not `not ported yet: reading the reflected form RawTypeDef`), so a macro that asks for
 this shape is told the ADT is narrower on purpose. Record it as a deliberate divergence
 in the reflected syntax:

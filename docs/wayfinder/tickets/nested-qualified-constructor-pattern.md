@@ -1,6 +1,6 @@
 ---
 title: A qualified constructor nested in a pattern argument is unknown
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

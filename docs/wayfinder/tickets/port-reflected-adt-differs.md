@@ -32,7 +32,7 @@ C# port cannot even represent.
 `Arg`, and `TraitDecl.Operations` are closures over one binder — so a two-parameter
 trait is unrepresentable, not merely unread. Probe: `DeclTrait(x, [x, x], …)`.
 
-Decide first whether `fun` *has* multi-parameter traits, since `docs/wayfinder/tickets/`
+Decide first whether `quill` *has* multi-parameter traits, since `docs/wayfinder/tickets/`
 has no decision on it and the prototype's support may be incidental (a list where one
 element is used). If the language wants them, this is a trait-system rework — trait
 resolution, bound sets, and the operations' binder shape all move — and it must be

@@ -1,6 +1,6 @@
 ---
 title: Effects on the arrow (Unison style); `~>` for effect polymorphism
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -42,7 +42,7 @@ lexer rule (uniform lexing).
   (trait / `sig` member) it is just the union;
 - applied recursively inside higher-order parameters.
 
-```fun
+```quill
 f : (A ~> B) -> (C ~> D) ~> E
 //  = [e1, e2] -> (A ->{e1} B) -> (C ->{e2} D) ->{e1, e2} E
 log_map = fn(f : A ~> B, xs : List(A)) ~> List(B) { … perform Log.write(…) … }
@@ -52,7 +52,7 @@ Two independent callbacks whose effects must stay apart, or a result with extra
 effects in a bodiless signature, are written with named variables.
 
 **Definitions: `: T` when pure, the arrow form only when effectful** (revised same day):
-```fun
+```quill
 double = fn(n : I64) : I64 { n + n }            // pure
 bump   = fn(n : I64) ->{Log} I64 { … }          // effectful
 app    = fn(g : Unit ~> I64) ~> I64 { g(()) }   // polymorphic
@@ -124,7 +124,7 @@ arrow that only *returns another function* collects nothing; the parameters'
 variables land on the **final** arrow (where the callback is actually called),
 together with whatever the body performs there.
 
-```fun
+```quill
 twice : (A ~> A) ~> A ~> A
 //    = [e] -> (A ->{e} A) -> (A ->{e} A)      // twice(f) is pure
 ```
@@ -138,7 +138,7 @@ parameter mints.
 A `~>` written outside a signature's parameter/result structure (a type alias,
 a field or member type) **mints its own row variable**:
 
-```fun
+```quill
 Callback = Unit ~> I64;              // = [e] -> Unit ->{e} I64
 app = fn(g : Callback) : I64 { g(()) }    // ERROR: the result is declared pure,
                                           // but calling g performs e
@@ -153,7 +153,7 @@ silently widened.
 An implicit row variable minted by `~>` inside a parameter's type is **rank 1**:
 it is bound at the enclosing definition and chosen by that definition's caller.
 
-```fun
+```quill
 Callback = Unit ~> I64;                       // [e] -> Unit ->{e} I64
 app = fn(g : Callback) : I64 { g(()) }        // ERROR: result declared pure, g performs e
 app = fn(g : Callback) ~> I64 { g(()) }       // ok; app(log_cb) then has {Log}
@@ -173,7 +173,7 @@ at the definition that takes it (`Elab_type_expr.poly_row_alias` reads what the
 name is bound to; it never elaborates, so a type not yet in scope is simply not
 one), exactly as an inline `~>` does:
 
-```fun
+```quill
 Callback = Unit ~> I64;
 app = fn(g : Callback) ~> I64 { g(()) };   // [e] -> (Unit ->{e} I64) ->{e} I64
 app(log_cb)                                 // {Log}; a pure callback is fine too
@@ -192,7 +192,7 @@ it with `E`, so it needs every parameter's type for the same reason. A body that
 performs under it is `EffectsInPureResult`, naming the effects and pointing at
 `->{E} T` / `~> T`:
 
-```fun
+```quill
 bad  = fn(u : Unit) : I64 { perform Log.write(1) }      // error: names Log
 good = fn(u : Unit) ->{Log} I64 { perform Log.write(1) }
 app  = fn(g : Callback) : I64 { g(()) }                 // error: g performs its row

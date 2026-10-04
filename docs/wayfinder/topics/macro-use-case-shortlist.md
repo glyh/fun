@@ -1,8 +1,8 @@
 # Macro use-case shortlist (idea store)
 
 A curated shortlist of macro use cases that are *compelling specifically for
-`fun`* — not the generic hygienic-macro fare. The point of collecting these is
-that `fun`'s macro system sits on top of machinery a general-purpose macro system
+`quill`* — not the generic hygienic-macro fare. The point of collecting these is
+that `quill`'s macro system sits on top of machinery a general-purpose macro system
 does not have:
 
 - **types-as-values** — a `Type` is an ordinary first-class value a macro can hold
@@ -19,7 +19,7 @@ does not have:
 
 Together these mean many things that are "compiler features" elsewhere can be
 *library code* here. This doc is an idea store, not a frontier item — see the map's
-[Open questions](../fun-design-map.md#open-questions) for what is actually scheduled.
+[Open questions](../quill-design-map.md#open-questions) for what is actually scheduled.
 
 > **Overall recommendation.** #2 (type-providing `format`) is the best *small,
 > self-contained* demo — it needs nothing new. #1 (deriving) is the substantial
@@ -37,7 +37,7 @@ type's structure via [type-case](type-case-generic-programming.md) +
 
 **Sketch.**
 
-```fun
+```quill
 derive @ (Eq, struct x: I64; y: Bool end)
 -- expands to:
 impl Eq(struct x: I64; y: Bool end) = module
@@ -68,7 +68,7 @@ the user — the macro *provides* it.
 
 **Sketch.**
 
-```fun
+```quill
 format @ ("%d items, %s")   -- has type  I64 -> String -> String
 ```
 
@@ -95,7 +95,7 @@ pattern-level DSLs built over the existing pattern reflection (`RawPatCon`,
 
 **Sketch.**
 
-```fun
+```quill
 matches? @ (x, Some(_))          -- a Boolean tester macro: expands to
                                   --   match x do Some(_) -> True | _ -> False end
 guard @ (cond, body)             -- when/guard sugar
@@ -122,7 +122,7 @@ programs fail to expand, not to run.
 
 **Sketch.**
 
-```fun
+```quill
 statemachine do
   start -> running
   running -> done

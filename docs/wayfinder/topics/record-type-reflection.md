@@ -6,7 +6,7 @@ Extend runtime `Type` matching so generic code can inspect structural record/str
 
 The intended surface is a struct-type pattern, not record-constructor pattern reuse:
 
-```fun
+```quill
 match T do
 | struct x: p; _ end -> ...
 | struct x: I64; y: Bool; end -> ...
@@ -51,7 +51,7 @@ and pat =
 
 Update `lib/expand/enforest.ml` so pattern atoms accept:
 
-```fun
+```quill
 struct x: p; y: I64; _ end
 struct x: p; _ end
 ```
@@ -109,7 +109,7 @@ Branch-sensitive refinement should treat a struct type pattern as replacing the 
 
 If full dependent refinement for bound field types is too large for the first pass, keep Phase 1 elaboration scoped to branch-local binders and runtime matching, then add expected-type/context refinement as Phase 2. However, the target behavior should allow examples like:
 
-```fun
+```quill
 field_default : (T : Type) -> I64 = fn(T) ->
   match T do
   | struct x: p; _ end -> match p do I64 -> 1 | _ -> 0 end
@@ -159,7 +159,7 @@ Add semantic tests in `test/semantic/test_elaborate.ml`:
 
 Add backend tests in `test/backend/test_core.ml`:
 
-```fun
+```quill
 classify : Type -> I64 = fn(T) ->
   match T do
   | struct x: I64; _ end -> 1
@@ -178,7 +178,7 @@ Expected cases:
 
 Closed-vs-open behavior:
 
-```fun
+```quill
 match struct x: I64; y: Bool; end do
 | struct x: I64 end -> 1
 | struct x: I64; _ end -> 2

@@ -1,6 +1,6 @@
 ---
 title: Reflecting a pattern-synonym use that supplies its type arguments
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -23,7 +23,7 @@ with no reaching program — and this one, which a macro author can hit.
 
 The feature works. Only *reflection* of it does not:
 
-```fun
+```quill
 # works — VALUE 1
 { M = module { pub pattern Two(a, b) = (a, b) };
   match ((1, True)) { M.Two[I64, Bool](p, q) => p } }
@@ -40,10 +40,10 @@ ELAB not ported: not ported yet: reflecting the type arguments a pattern synonym
 
 ## Why — and what the fix is
 
-`src/Fun.Compiler/Reflection.cs:243-245` refuses because the reflected `Path` ADT has no
+`src/Quill.Compiler/Reflection.cs:243-245` refuses because the reflected `Path` ADT has no
 slot for the supplied types:
 
-```fun
+```quill
 pub PathChoice = struct {opens: List(String); fallback: Option(String)};
 pub Path = struct {head: Id; members: List(String); head_choice: Option(PathChoice)};
 ```
@@ -88,8 +88,8 @@ operator macro (`Expander.Macros.cs:306`) is a different site, ruled not-a-gap i
   the verdict table for the other ten sites
 - [a pattern synonym's generalized types](pattern-synonym-type-parameters.md) — the
   feature, including the deviation it recorded from its ruling's route
-- `src/Fun.Compiler/Reflection.cs:238-260` — the refusal and the shape it cannot build
-- `std/bootstrap.fun:39-40` — `PathChoice` and `Path`
+- `src/Quill.Compiler/Reflection.cs:238-260` — the refusal and the shape it cannot build
+- `std/bootstrap.qll:39-40` — `PathChoice` and `Path`
 - `CLAUDE.md` — "Adding a new reflected Syntax ADT" and "Reflection and scope-addition:
   preserve ALL fields", which are this ticket's method
 
@@ -105,8 +105,8 @@ rec-group rule, `Reflection.cs` peels the implicit `Ap`s into the new field and 
 on read-back, and the gate shows nothing observable moved — `905` cases, 0 failed, xUnit `206`,
 no expectation changed.
 
-Files: `std/bootstrap.fun`, `src/Fun.Kernel/PreludeAbi.cs`, `src/Fun.Compiler/Reflection.cs`, and
-the case `test/conformance/cases/macros/pattern-synonym-type-args-round-trip.{fun,expect}`.
+Files: `std/bootstrap.qll`, `src/Quill.Kernel/PreludeAbi.cs`, `src/Quill.Compiler/Reflection.cs`, and
+the case `test/conformance/cases/macros/pattern-synonym-type-args-round-trip.{quill,expect}`.
 
 The fork ran out of turns before running the suite, so its tree was **uncommitted** when it
 stopped; pi's cleanup saved it (`pi-agent: Reflect synonym type arguments`) and the counts above

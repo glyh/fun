@@ -1,6 +1,6 @@
 ---
 title: Domain model — macro evaluation and hygiene
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed

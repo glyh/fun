@@ -52,7 +52,7 @@ context.
 
 **Maturity.** contested — both forms ship (Lisp and Nim uniform, Rust and Julia marked),
 and this thread's comments argue which is right, with tooling as the deciding variable;
-the uniform side only wins if expansion UX carries the weight, which is fun's side.
+the uniform side only wins if expansion UX carries the weight, which is quill's side.
 
 **Tried by.** The Lisp family ("in most Lisps it's impossible for the caller to
 distinguish" — the thread's own framing); Rust and Julia take the marked side; Nim shares
@@ -69,7 +69,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1itzcn1/annotating_litera
 · comments on the first thread: u/LobYonder, u/XtremeGoose, u/XDracam, u/dnabre,
 u/matthieum, u/TheUnlocked, u/SultanOfSodomy (on that permalink).
 
-**Bearing on `fun`.** Already has it: `@` was removed, macros are invoked as `f(args)`,
+**Bearing on `quill`.** Already has it: `@` was removed, macros are invoked as `f(args)`,
 and macros live in the scope-aware binding table with a Value/Macro kind tag —
 `unify-macro-call-syntax-with-functions`, closed and implemented (commit `0441c9a`).
 
@@ -92,7 +92,7 @@ cannot make it resolve.
 **Maturity.** shipped.
 
 **Tried by.** Racket's scope-set model [general knowledge, not from corpus]; Passerine
-ships a hygienic macro system (hobby language — interest, not viability); fun implements
+ships a hygienic macro system (hobby language — interest, not viability); quill implements
 sets of scopes; Dylan ran Scheme's hygienic-macro research over an Algol syntax (comment
 u/nostrademons, cited below).
 
@@ -107,7 +107,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/std6j7/pldi_2021_hygienic
 score 30, 22 comments, 2024-10 —
 https://www.reddit.com/r/Compilers/comments/1fybxt9/rethinking_macros_how_should_a_modern_macro/
 
-**Bearing on `fun`.** Already has it: sets-of-scopes resolution (largest subset wins,
+**Bearing on `quill`.** Already has it: sets-of-scopes resolution (largest subset wins,
 ambiguity loud), one hygiene contract at `Expand.application` minting an intro scope and a
 use-site scope per application, and the string-built/generated-symbol id rejected outright
 (`core-tt-domain-model-macros.md` M2/M10).
@@ -127,16 +127,16 @@ macro cannot forge a match for an unrelated binder.
 leak, and the macro must hold the id it borrows from (typically a parameter), so it
 cannot reach for an ambient name the way the unhygienic variants allow.
 
-**Maturity.** research — implemented in fun's port; the marker/implicit variants are
+**Maturity.** research — implemented in quill's port; the marker/implicit variants are
 argued in one thread, not built.
 
-**Tried by.** fun (`Borrowed context`); nobody else in this corpus has shipped this
+**Tried by.** quill (`Borrowed context`); nobody else in this corpus has shipped this
 shape.
 
 **Source.** Ideas on how to break hygiene? — score 6, 13 comments, 2020-06 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/gwo212/ideas_on_how_to_break_hygiene/
 
-**Bearing on `fun`.** Already has it, named *Borrowed context* — "the one deliberate way
+**Bearing on `quill`.** Already has it, named *Borrowed context* — "the one deliberate way
 to break hygiene" (CONTEXT.md). The spelling-based variants are rejected:
 `resolved-names-forgeable` (closed) and M10's ruling that strings build no hygienic
 syntax — the generated-symbol and spelling-resolution routes (Common Lisp, Clojure) are
@@ -154,14 +154,14 @@ error at the splice. The stricter variant in the corpus typechecks under quotati
 silently depend on syntax its user declared, and hole mismatches are caught without
 running the macro.
 
-**Costs.** The price fun records explicitly: a template can no longer rely on syntax its
+**Costs.** The price quill records explicitly: a template can no longer rely on syntax its
 user declares — `$x ** 2` where only the caller declared `**` is an error at the
 definition rather than a silent dependency — and the macro's author must know the parse.
 
-**Maturity.** research (fun's kinded holes enforced; Unseemly's typed quotation is a
+**Maturity.** research (quill's kinded holes enforced; Unseemly's typed quotation is a
 prototype admitting "a bunch of missing features").
 
-**Tried by.** fun; Unseemly; Scala 3, where staying inside the quote API makes the
+**Tried by.** quill; Unseemly; Scala 3, where staying inside the quote API makes the
 compiler check generated code (comment u/RiceBroad4552, source below).
 
 **Source.** Unseemly: a typed macro language — score 67, 15 comments, 2020-01 —
@@ -170,7 +170,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/eq26iu/unseemly_a_typed_m
 languages — score 32, 39 comments, 2025-10 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1og5av5/implementing_comptime_in_existing_dynamic/
 
-**Bearing on `fun`.** Already has it: `Quoted syntax` parses at the definition site
+**Bearing on `quill`.** Already has it: `Quoted syntax` parses at the definition site
 (M10, implemented), holes are reflection types checked at the splice, and the round trip
 through reflection must be the identity (M1).
 
@@ -199,9 +199,9 @@ metaprogramming language).
 
 **Maturity.** shipped for the interleaving itself — u/LPTK's comment: Scala 3 macros
 "expand during type checking/elaboration, so they can use and influence types as they
-proceed"; fun's per-binding queue with the deferred-annotation handshake remains research.
+proceed"; quill's per-binding queue with the deferred-annotation handshake remains research.
 
-**Tried by.** fun (Stages 1–9 plus the type-aware handshake, implemented); Scala 3
+**Tried by.** quill (Stages 1–9 plus the type-aware handshake, implemented); Scala 3
 (expansion during type checking — comment u/LPTK); Nim passes already-typed expressions
 to macros (comment u/ipe369); Klister's blocked-task interleaving is the corpus-visible
 candidate list entry; Turnstile embeds type checking in macro definitions.
@@ -217,7 +217,7 @@ u/vanderZwan (basil, https://www.reddit.com/r/ProgrammingLanguages/comments/jfqd
 u/Public_Grade_2145 (Static Metaprogramming,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1m022pe/).
 
-**Bearing on `fun`.** Already has it: expansion interleaved with elaboration per binding
+**Bearing on `quill`.** Already has it: expansion interleaved with elaboration per binding
 (Klister minus suspended expansions), type-aware macros deferred to the elaborator with
 explicit type binders (`macro-type-binders-should-be-explicit`, closed), and
 `type-aware-macro-output-is-not-expanded` closed with output expanded in place.
@@ -240,7 +240,7 @@ the guarantee is incomplete modulo one unimplemented feature and bugs, and the l
 
 **Maturity.** research.
 
-**Tried by.** Unseemly (prototype); fun; Scala 3's quote API, which enforces type safety,
+**Tried by.** Unseemly (prototype); quill; Scala 3's quote API, which enforces type safety,
 hygiene and stage consistency of generated code as long as the author stays inside it
 (comment u/RiceBroad4552, source below).
 
@@ -252,7 +252,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/15fs9pu/resources_on_stat
 dynamic languages — score 32, 39 comments, 2025-10 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1og5av5/implementing_comptime_in_existing_dynamic/
 
-**Bearing on `fun`.** Has it differently: the macro annotation is a pi type elaborated
+**Bearing on `quill`.** Has it differently: the macro annotation is a pi type elaborated
 where the macro is defined (`macro m[A](x) : Expr(T)`, explicit type binders), the call is
 deferred and its binders must all solve ("cannot infer A for `default`"), and the output
 is *checked* at the promised type rather than trusted (M6).
@@ -301,7 +301,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1i2nqy8/c3_066_released/
 · comments on the first thread: u/GabrielDosReis (the `constexpr` author), u/alphaglosined,
 u/alatennaub; on Unpopular Opinions?: u/Soupeeee (Common Lisp compiler macros).
 
-**Bearing on `fun`.** Genuinely new: no `comptime` construct is on the map. `fun`'s
+**Bearing on `quill`.** Genuinely new: no `comptime` construct is on the map. `quill`'s
 compile-time work is elaboration and NbE under the one evaluation budget shared with the
 checker, and macros are syntax → syntax. A comptime block with build side effects would
 land in the fog item "the library-vs-compiler-machinery boundary".
@@ -335,7 +335,7 @@ graph and the compiler performs the IO (u/not-my-walrus).
 **Maturity.** contested — one thread now holds both sides; the pure-by-default side has
 the reproducibility mechanism, the permissive side the build-system precedent.
 
-**Tried by.** Nobody named in the corpus ships the capability list; fun rejects
+**Tried by.** Nobody named in the corpus ships the capability list; quill rejects
 termination checking outright.
 
 **Source.** What would you leave out of comptime? — score 21, 42 comments, 2026-01 —
@@ -345,7 +345,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1hsa6j0/build_processes_c
 · comments on the first thread: u/MattiDragon, u/not-my-walrus, u/Norphesius, u/drewftg,
 u/useerup, u/matthieum (offline and reproducible builds).
 
-**Bearing on `fun`.** Rejected on the termination half: no nesting limit and no
+**Bearing on `quill`.** Rejected on the termination half: no nesting limit and no
 termination checking — expansion spends from the one evaluation budget, and exhaustion is
 an error value naming the call (`macro-fuel-is-the-evaluation-budget`, closed; the budget
 also catches breadth blowup a nesting guard never trips). The IO half is not on the map;
@@ -386,8 +386,8 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1rrgyl3/noel_welsh_parame
 (comments: u/klekpl, u/Syrak, u/tbagrel1, u/Red-Krow, u/SwingOutStateMachine,
 u/marshaharsha, u/oldretard).
 
-**Bearing on `fun`.** Decided the other way, not fog: types are values and type-case over
-open `Type` is acceptable, so fun never promises this flavour of parametricity — the
+**Bearing on `quill`.** Decided the other way, not fog: types are values and type-case over
+open `Type` is acceptable, so quill never promises this flavour of parametricity — the
 corpus's parametricity defence is already answered by ruling. Erasure quantities are not
 on the map (genuinely new if ever wanted).
 
@@ -435,7 +435,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/9um9nw/whats_your_ideal_l
 u/pauseless, u/DokOktavo, u/needleful, u/poralexc (Zig's build system has source
 generation steps; "if you're using comptime for everything in Zig you're doing it wrong").
 
-**Bearing on `fun`.** Not on the map: fun has no external generator and no second IR to
+**Bearing on `quill`.** Not on the map: quill has no external generator and no second IR to
 emit (a `Surface.t` IR was deleted on purpose). A tool consuming expansion output would be
 a consumer of the fog item "first-class compiler API for tools/LSP/REPL".
 
@@ -476,8 +476,8 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1m022pe/static_metaprogra
 (Liquid Haskell and Gallina as statically typed languages without Turing-complete
 compile-time evaluation).
 
-**Bearing on `fun`.** Rejected as a seam: expansion's only handle on elaboration is the
-fixed `IMacroRuntime` adapter, `Fun.Expand` cannot reference `Fun.Compiler`, and the
+**Bearing on `quill`.** Rejected as a seam: expansion's only handle on elaboration is the
+fixed `IMacroRuntime` adapter, `Quill.Expand` cannot reference `Quill.Compiler`, and the
 expander handle is a capability, not a context (`expander-handle-is-a-capability-not-a-context`).
 A wider compiler surface is the fog item "first-class compiler API"
 (`topics/first-class-elaborator-api.md`), which sharpens when the first real downstream
@@ -513,7 +513,7 @@ dialects as the deep-primitives-plus-library shape, u/zachgk at his own `choice`
 https://www.reddit.com/r/ProgrammingLanguages/comments/mf15cy/metaprogramming_vs_compiler_control/
 (comments: u/PL_Design, u/Uncaffeinated, u/PegasusAndAcorn, u/raiph, u/zachgk).
 
-**Bearing on `fun`.** Open, and deliberately narrow: userland meaning comes from Stage 11
+**Bearing on `quill`.** Open, and deliberately narrow: userland meaning comes from Stage 11
 demotion into prelude macros, not from exposed passes — expansion's only handle on
 delaboration stays the fixed `IMacroRuntime`, and the expander handle is a capability, not
 a context. The pressure this idea creates lands on the fog item "first-class compiler API
@@ -533,7 +533,7 @@ program's structure instead of re-parsing it.
 
 **Costs.** The reflection types become a public contract — every new form is a breaking
 change for macros — and total reflection leaves no escape hatch: partial decompositions
-must be loud errors. fun found what that costs when the round trip was first pinned: five
+must be loud errors. quill found what that costs when the round trip was first pinned: five
 fields silently lost in either direction plus four silent degradations. The comment tree
 says the same from the outside: introspection and rebuilding syntax by parts is "the
 section you need to solve first", and where introspection is not first class — Rust —
@@ -543,7 +543,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1elrpbz/).
 
 **Maturity.** research.
 
-**Tried by.** fun (enforced, pinned by a test over a varied program before and after
+**Tried by.** quill (enforced, pinned by a test over a varied program before and after
 expansion); Racket's syntax objects are the precedent [general knowledge, not from
 corpus]; Klister appears in the corpus only as a candidate list entry.
 
@@ -553,7 +553,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1blldxz/why_dont_most_pro
 · Why have an AST? — score 58, 33 comments, 2022-06 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/vgekk2/why_have_an_ast/
 
-**Bearing on `fun`.** Already has it: Reflection is total and the round trip is the
+**Bearing on `quill`.** Already has it: Reflection is total and the round trip is the
 identity (M1, enforced); what still rides as an undecomposed `Core.StxExpr` is scaffolding,
 not a boundary. Exposing the same machinery to out-of-process tools stays fog
 (first-class compiler API).
@@ -576,7 +576,7 @@ or `;` reads to it — a rule users must be taught rather than guessed.
 
 **Maturity.** research for this shape; macro-by-example is the shipped ancestor.
 
-**Tried by.** fun; Unseemly ships "Macro By Example" (n-ary forms without boilerplate
+**Tried by.** quill; Unseemly ships "Macro By Example" (n-ary forms without boilerplate
 loops); the pattern-form/arbitrary-code split itself is the corpus's Racket-family
 standard. The non-S-expression thread's commenters name the shipped answers — Nim's
 macro/template/tree-rewrite/pragma spectrum (u/MegaIng), Rhombus, whose class system is
@@ -593,7 +593,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1elrpbz/what_are_good_exa
 2024-10 —
 https://www.reddit.com/r/Compilers/comments/1fybxt9/rethinking_macros_how_should_a_modern_macro/
 
-**Bearing on `fun`.** Already has it: a template is sugar for a macro (M9, implemented,
+**Bearing on `quill`.** Already has it: a template is sugar for a macro (M9, implemented,
 `templates-desugar-to-macros` closed) — the template keeps the parse, the hole kinds are
 the parameter types of the macro it expands to, and one hygiene contract covers both.
 
@@ -622,7 +622,7 @@ case, why not add switch, "now everyone will implement their own incompatible sw
 **Maturity.** contested — now argued inside one thread rather than inferred from opposing
 posts.
 
-**Tried by.** fun (increment 1: `Bool` + `if`, 778 tests green); Unseemly implements `if`,
+**Tried by.** quill (increment 1: `Bool` + `if`, 778 tests green); Unseemly implements `if`,
 function definitions and pipes as macros.
 
 **Source.** Macros good? bad? or necessary? — score 54, 96 comments, 2025-08 —
@@ -632,7 +632,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/eq26iu/unseemly_a_typed_m
 · Macros in 22 languages — score 57, 26 comments, 2023-01 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/10dfzhn/macros_in_22_languages/
 
-**Bearing on `fun`.** Open ticket: `specify-stage-11-macro-powered-language-features`
+**Bearing on `quill`.** Open ticket: `specify-stage-11-macro-powered-language-features`
 (direction decided — demote into the library; increment 1 done). Further increments are
 that ticket's to sequence, not new proposals.
 
@@ -665,7 +665,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1n41akt/macros_good_bad_o
 · Are myths about the power of LISP exaggerated? — score 91, 100 comments, 2023-07 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/158iyza/are_myths_about_the_power_of_lisp_exaggerated/
 
-**Bearing on `fun`.** The mirror image of Stage 11: demotion happens one increment at a
+**Bearing on `quill`.** The mirror image of Stage 11: demotion happens one increment at a
 time under tests, and `macro-owns-its-output` (open, grilling) exists precisely so a
 declaration macro's output is a decided rule rather than an accident — "decide this before
 a second declaration macro exists".
@@ -687,7 +687,7 @@ with "how difficult is it to implement smart IDE features" as the objective test
 level. That test is a fair statement of what Stage 12 owes.
 
 **Costs.** Every diagnostic needs two locations and a trace, and an evaluation failure
-inside a macro body must be attributed back to the application — work fun has already
+inside a macro body must be attributed back to the application — work quill has already
 paid (`macro-body-eval-errors-lack-site`, `budget-error-names-no-source-call`,
 `expansion-errors-reach-the-user-raw`, all closed) with more to specify. The practitioner
 cost is in the corpus too: in Haskell and Rust macros slow compilation and the LSP's
@@ -705,7 +705,7 @@ https://www.reddit.com/r/Compilers/comments/i1i3qy/clang_cpp_vs_apple_clang_cpp/
 https://www.reddit.com/r/ProgrammingLanguages/comments/qz3725/ides_and_macros/
 · comments on Macros good? bad? or necessary?: u/sciolizer, u/omega1612.
 
-**Bearing on `fun`.** Open ticket: `specify-stage-12-macro-diagnostics-and-expansion-ux`
+**Bearing on `quill`.** Open ticket: `specify-stage-12-macro-diagnostics-and-expansion-ux`
 (open, unblocked 2026-09-26 — no rewrite is coming to make the effort disposable). This
 entry is the corpus's evidence for what that spec owes: definition site + application site
 + expansion chain on every expansion failure.
@@ -743,7 +743,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1rrgyl3/), u/PL_Design
 (Metaprogramming vs. compiler control.,
 https://www.reddit.com/r/ProgrammingLanguages/comments/mf15cy/).
 
-**Bearing on `fun`.** Has it differently: fun took the explicit-binder slice of this idea
+**Bearing on `quill`.** Has it differently: quill took the explicit-binder slice of this idea
 — `macro m[A](x) : Expr(T)` with names in the annotation only referring
 (`macro-type-binders-should-be-explicit`, closed) — and rejected the corollary implicitly:
 sets-of-scopes resolve capture without forbidding shadowing.
@@ -777,7 +777,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1m022pe/static_metaprogra
 · A rare approach to metaprogramming — score 0, 8 comments, 2026-05 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1tkj4sd/a_rare_approach_to_metaprogramming/
 
-**Bearing on `fun`.** Has it differently: a macro is called like a function; the `: …`
+**Bearing on `quill`.** Has it differently: a macro is called like a function; the `: …`
 after its parameters is a macro annotation fixing its kind and promised type — not an
 attribute — and the position is checked before the macro runs (M8, kind mismatch is an
 error value). `macro-annotation-constraints-mean-nothing` (closed) records that an
@@ -814,7 +814,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1othlkv/a_compiletime_met
 · Type reflection study material — score 34, 3 comments, 2021-01 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/krcg3j/type_reflection_study_material/
 
-**Bearing on `fun`.** Already has it, stronger: types are values, type-case over open
+**Bearing on `quill`.** Already has it, stronger: types are values, type-case over open
 `Type` is acceptable (decided, complete), record type reflection is complete, and the
 map's own idea store (`macro-use-case-shortlist`) builds `derive` on exactly this pair.
 
@@ -840,10 +840,10 @@ u/eliminate1337 answers that Haskell still resorts to Template Haskell — the c
 attribute's demand is not yet evidence for the library-side route.
 
 **Maturity.** research — the compiler-side attribute form is shipped and proves demand;
-the library-side form is argued in the corpus and designed, not built, in fun.
+the library-side form is argued in the corpus and designed, not built, in quill.
 
 **Tried by.** Rust `#[derive]` (compiler-side, shown in a corpus thread as the boilerplate
-it removes); fun's shortlist flagship #1 is design only.
+it removes); quill's shortlist flagship #1 is design only.
 
 **Source.** What might polytypic (datatype-generic) programming look like if it was built
 in to a language? — score 44, 41 comments, 2025-10 —
@@ -854,7 +854,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/123sn1i/what_features_hav
 · Nuts or genius? "Modules are classes/objects" — score 40, 23 comments, 2021-06 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/nxumma/nuts_or_genius_modules_are_classesobjects/
 
-**Bearing on `fun`.** Open, and already mapped: `macro-use-case-shortlist` names deriving
+**Bearing on `quill`.** Open, and already mapped: `macro-use-case-shortlist` names deriving
 as its flagship, tying Stage 11 to `design-trait-library-deriving-and-protocols` (open);
 `reflect-match-in-expr-macro-adt` (closed) is what enables a prelude-macro `derive`.
 
@@ -892,7 +892,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1m022pe/static_metaprogra
 comments, 2024-08 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1elrpbz/what_are_good_examples_of_macro_systems_in/
 
-**Bearing on `fun`.** Open infrastructure: Stage 11 is the umbrella this presumes, kind
+**Bearing on `quill`.** Open infrastructure: Stage 11 is the umbrella this presumes, kind
 tagging (M8) is what lets a DSL declare whether it expands to an expression, a
 declaration, a pattern or a block, and Stage 12 decides whether its errors read like the
 host's.
@@ -914,14 +914,14 @@ host's.
   sandbox question stated cleanly: divergence, IO, capabilities, dependency management.
   https://www.reddit.com/r/ProgrammingLanguages/comments/1qbq1n9/what_would_you_leave_out_of_comptime/
 - **Ideas on how to break hygiene?** (6, 13 comments, 2020-06) — four concrete designs for
-  deliberate capture, the exact question fun answers with `Borrowed context`.
+  deliberate capture, the exact question quill answers with `Borrowed context`.
   https://www.reddit.com/r/ProgrammingLanguages/comments/gwo212/ideas_on_how_to_break_hygiene/
 - **Static Metaprogramming, a Missed Opportunity?** (74, 63 comments, 2025-07) — the
   compiler-plugin/type-provider route, and the "guess-based development" charge against
   dynamic metaprogramming.
   https://www.reddit.com/r/ProgrammingLanguages/comments/1m022pe/static_metaprogramming_a_missed_opportunity/
 - **Resources on statically typed hygenic macros?** (12, 12 comments, 2023-08) — the
-  candidate list (Racket, Hackett, Klister, Typer) and the question fun's Stage 10 answers.
+  candidate list (Racket, Hackett, Klister, Typer) and the question quill's Stage 10 answers.
   https://www.reddit.com/r/ProgrammingLanguages/comments/15fs9pu/resources_on_statically_typed_hygenic_macros/
 - **My macro design is doing too many things** (11, 8 comments, 2026-06) — the failure
   mode in the author's own words: annotations as a kitchen sink, two things that cannot be
@@ -963,7 +963,7 @@ host's.
   aside ("the docs can leave a bit to be desired") and a reviewer asking MiniLang's docs to
   show idiomatic use, neither of which is about teaching macros. Idempotence and
   round-tripping of a syntax representation — the comments failed to fill this gap too;
-  fun's M1/M10 rulings still have no corpus counterpart, the closest being u/mamcx naming
+  quill's M1/M10 rulings still have no corpus counterpart, the closest being u/mamcx naming
   introspection and rebuilding as "the section you need to solve first". Enforestation-style
   interleaving by name is still absent from the corpus, but the comments do supply
   interleaved expansion: Scala 3 "expands during type checking/elaboration" (u/LPTK) and

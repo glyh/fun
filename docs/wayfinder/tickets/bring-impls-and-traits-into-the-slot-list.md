@@ -1,6 +1,6 @@
 ---
 title: Impls and traits extend the context outside the slot list
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

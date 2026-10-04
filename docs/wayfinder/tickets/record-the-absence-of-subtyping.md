@@ -1,6 +1,6 @@
 ---
 title: Record the absence of subtyping
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: open
@@ -12,14 +12,14 @@ blocked_by: []
 
 ## Question
 
-Confirm and record that `fun` has no subtyping relation — convertibility (NbE) is the
+Confirm and record that `quill` has no subtyping relation — convertibility (NbE) is the
 only equality, records are structural, and no subtype rule exists anywhere.
 
 ## Context
 
 - The Graydon-constraint audit (2026-10-01,
   [review-2026-10-01.md](../../ideas/review-2026-10-01.md)) found **zero** mentions of
-  subtyping across `docs/wayfinder/fun-design-map.md`, `docs/STATUS.md`, and
+  subtyping across `docs/wayfinder/quill-design-map.md`, `docs/STATUS.md`, and
   `docs/wayfinder/topics/`. It is the one row of Graydon's ten constraints with no record
   at all.
 - The de facto answer is "none": there is no subtype relation, records are structural,
@@ -30,7 +30,7 @@ only equality, records are structural, and no subtype rule exists anywhere.
 
 ## Resolution
 
-**Ruled 2026-10-04: recorded, with the exception named.** `fun` has no subtyping relation —
+**Ruled 2026-10-04: recorded, with the exception named.** `quill` has no subtyping relation —
 NbE convertibility is the only equality, records are structural and exact, and there is no
 coercion term anywhere (`grep -rniE 'coerc' src/` = **0**). Checking is conversion-only:
 `Elaborator.Check` (`Elaborator.cs:342`) falls through to `AgreeWithExpected`
@@ -42,7 +42,7 @@ convertibility.
 **The one exception, already landed:** module↔signature unification admits width.
 `Unify.Structs.Modules` (`Unify.Structs.cs:17`) lets a partial side — a signature's instance —
 need only its own members present in the other side: extra members tolerated, missing members
-refused, one-directional, no coercion. Pinned by `values/core-021.fun` and documented in
+refused, one-directional, no coercion. Pinned by `values/core-021.qll` and documented in
 `port-structs-records-signatures.md:56`. `grep -rniE 'subtyp' src/` = **3** hits, all comments
 naming this rule (`Core.Structs.cs:8`, `Unify.Structs.cs:17`, `Elaborator.Traits.cs:592`).
 

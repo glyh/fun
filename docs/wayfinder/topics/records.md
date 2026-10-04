@@ -4,7 +4,7 @@ Record types are structural `struct` values with field declarations. Record inst
 
 ## Construction
 
-```fun
+```quill
 do
   Point = struct
     x: I64;
@@ -22,7 +22,7 @@ Parameterized record-like structs are represented as functions returning struct 
 
 Record instances and module values both use dot syntax:
 
-```fun
+```quill
 p.x
 M.value
 ```
@@ -33,7 +33,7 @@ For records, dot access reads an instance field. For modules, dot access reads a
 
 Record patterns name the record type and destructure fields by name:
 
-```fun
+```quill
 match p do
 | Point {x; y} -> x + y
 end
@@ -41,7 +41,7 @@ end
 
 Supported forms include:
 
-```fun
+```quill
 Point {x; y}
 Point {x = n; y}
 Point {x; _}

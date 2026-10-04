@@ -1,6 +1,6 @@
 ---
 title: Domain model — effects
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 ---
 
 # Domain model — effects

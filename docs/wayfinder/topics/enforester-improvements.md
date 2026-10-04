@@ -94,7 +94,7 @@ Each migration:
 ## Status
 
 Every checkbox below described the deleted prototype. Measured against
-`src/Fun.Expand` at `dfa519b` (2026-10-02), each claim's state is:
+`src/Quill.Expand` at `dfa519b` (2026-10-02), each claim's state is:
 
 | checkbox (prototype) | measured state in the port |
 | --- | --- |
@@ -103,7 +103,7 @@ Every checkbox below described the deleted prototype. Measured against
 | Phase 1: recovery helpers | **ruled out of scope**, same ruling; the only non-advance guard is `Enforest.RequireAdvance` |
 | Fix: `parse_fn_parts` arrow body rest handling | `Enforest.EnsureNoRest` refuses a leftover rather than returning one |
 | Fix: `unwrap_stx_decl` DeclNil/DeclCons option return | no such function; not applicable |
-| Phase 2: `parse_spec.ml` combinator library, generic driver | none — `grep -niE 'spec\|combinator\|pratt' src/Fun.Expand/*.cs` = **0 hits** |
+| Phase 2: `parse_spec.ml` combinator library, generic driver | none — `grep -niE 'spec\|combinator\|pratt' src/Quill.Expand/*.cs` = **0 hits** |
 | Phase 3: leaf parsers migrated to specs (6 named) | no specs to migrate to; the six names are prototype parsers (`enforest*.ml`), deleted with it |
 | Phase 4/5: migrate binding parsers / Pratt driver | never started; expression reading is role-driven named order groups (`Enforest.cs`, `Enforest.Roles.cs`), a different shape |
 
@@ -111,9 +111,9 @@ Every checkbox below described the deleted prototype. Measured against
 
 The error surface, measured — not a plan. Commands and their output:
 
-`grep -rn 'throw new' src/Fun.Expand/*.cs | wc -l` = **173**
+`grep -rn 'throw new' src/Quill.Expand/*.cs | wc -l` = **173**
 
-`grep -rhoE 'throw new [A-Za-z]+Exception' src/Fun.Expand/*.cs | sort | uniq -c`:
+`grep -rhoE 'throw new [A-Za-z]+Exception' src/Quill.Expand/*.cs | sort | uniq -c`:
 
 | exception | sites | what it is |
 | --- | --- | --- |
@@ -123,7 +123,7 @@ The error surface, measured — not a plan. Commands and their output:
 | `InvalidOperationException` | 12 | an internal invariant — never a language error |
 | `NotImplementedException` | 2 | an unported path, deliberately distinguishable |
 
-`grep -rc 'throw new' src/Fun.Expand/*.cs` (29 files; the six with 0 included):
+`grep -rc 'throw new' src/Quill.Expand/*.cs` (29 files; the six with 0 included):
 
 | file | sites | file | sites |
 | --- | --- | --- | --- |

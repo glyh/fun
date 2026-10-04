@@ -1,6 +1,6 @@
 ---
 title: A method cannot infer its row with ~>
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -45,5 +45,5 @@ Closed after re-running both runners on `main @ d58af64`.
 `dune test --root . test/conformance` reports `690 cases, 0 failed, 19 known
 prototype divergences`, so `values/method-poly-arrow-infers-row` fails in the
 prototype as listed (`PolyArrowOutsideSignature`); `cd dotnet && dotnet run
---project test/Fun.Conformance --no-build` passes it (not among the 13 unrelated
+--project test/Quill.Conformance --no-build` passes it (not among the 13 unrelated
 residue failures), so the port is correct.

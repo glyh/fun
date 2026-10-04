@@ -1,6 +1,6 @@
 ---
 title: Pattern synonym arguments bind by position, and a synonym is not found through open
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -56,5 +56,5 @@ Both defect cases landed and are listed. Closed after re-running both runners on
 `main @ d58af64`: `dune test --root . test/conformance` reports `690 cases, 0
 failed, 19 known prototype divergences`, so `values/pattern-synonym-binds-by-name`
 and `values/pattern-synonym-through-open` fail in the prototype as listed; `cd
-dotnet && dotnet run --project test/Fun.Conformance --no-build` passes both
+dotnet && dotnet run --project test/Quill.Conformance --no-build` passes both
 (neither is among the 13 unrelated residue failures), so the port is correct.

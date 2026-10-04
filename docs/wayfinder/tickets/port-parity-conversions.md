@@ -27,13 +27,13 @@ an `expect error` case fails in C# instead of passing.
 
 The live example, reproduced end to end by the integrator (2026-09-20):
 
-```fun
+```quill
 { 1 + 2 ~> 3 }
 ```
 
 The prototype parses `(1 + 2) ~> 3` and type-errors; the port answers
 `not ported yet: the polymorphic arrow ~>` because
-`dotnet/src/Fun.Expand/Enforest.Roles.cs:148` throws **before** its `continues` guard.
+`dotnet/src/Quill.Expand/Enforest.Roles.cs:148` throws **before** its `continues` guard.
 A case expecting `error` fails in C#, not for lack of coverage but because the refusal
 is the wrong kind. Fix the guard order here at least.
 
@@ -41,19 +41,19 @@ is the wrong kind. Fix the guard order here at least.
 
 | site | prototype |
 |---|---|
-| `Fun.Expand/Enforest.cs:220` | `enforest.ml:1445` |
-| `Fun.Expand/Enforest.cs:291` | `enforest.ml:514` |
-| `Fun.Expand/Enforest.cs:396` | `enforest_util.ml:342` |
-| `Fun.Expand/Enforest.cs:412` (bare brackets) | `enforest.ml:87` |
-| `Fun.Expand/Enforest.Roles.cs:148` (`~>`) | `enforest.ml:684` |
-| `Fun.Expand/Enforest.Roles.cs:338` (dotted order group) | an open item on [brackets-decide-grouping](brackets-decide-grouping.md) |
-| `Fun.Expand/Enforest.Traits.cs:143` | `enforest.ml:407` |
-| `Fun.Compiler/Elaborator.cs:506` | `elab_resolve.ml:387` |
-| `Fun.Compiler/Elaborator.Export.cs:52` | `elab_infer.ml:150` |
-| `Fun.Compiler/Elaborator.Patterns.cs:47` | `elab_patterns.ml:187` |
-| `Fun.Compiler/Elaborator.Structs.cs:80` | `enforest.ml:1509` |
-| `Fun.Compiler/Elaborator.Structs.cs:209` | `elab_infer.ml:936` |
-| `Fun.Compiler/Elaborator.Structs.cs:244` | `elab_type_expr.ml:74` |
+| `Quill.Expand/Enforest.cs:220` | `enforest.ml:1445` |
+| `Quill.Expand/Enforest.cs:291` | `enforest.ml:514` |
+| `Quill.Expand/Enforest.cs:396` | `enforest_util.ml:342` |
+| `Quill.Expand/Enforest.cs:412` (bare brackets) | `enforest.ml:87` |
+| `Quill.Expand/Enforest.Roles.cs:148` (`~>`) | `enforest.ml:684` |
+| `Quill.Expand/Enforest.Roles.cs:338` (dotted order group) | an open item on [brackets-decide-grouping](brackets-decide-grouping.md) |
+| `Quill.Expand/Enforest.Traits.cs:143` | `enforest.ml:407` |
+| `Quill.Compiler/Elaborator.cs:506` | `elab_resolve.ml:387` |
+| `Quill.Compiler/Elaborator.Export.cs:52` | `elab_infer.ml:150` |
+| `Quill.Compiler/Elaborator.Patterns.cs:47` | `elab_patterns.ml:187` |
+| `Quill.Compiler/Elaborator.Structs.cs:80` | `enforest.ml:1509` |
+| `Quill.Compiler/Elaborator.Structs.cs:209` | `elab_infer.ml:936` |
+| `Quill.Compiler/Elaborator.Structs.cs:244` | `elab_type_expr.ml:74` |
 
 Two of the prototype references are themselves open decisions in this repo
 (`brackets-decide-grouping`), so for those the port must produce *some* language

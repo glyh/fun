@@ -1,6 +1,6 @@
 ---
 title: The syntax round trip is lossy
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

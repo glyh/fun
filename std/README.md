@@ -8,20 +8,20 @@ program merely uses is library.
 ## Layout
 
 ```text
-std/bootstrap.fun   Bool, Option, List, Syntax — the ABI, and the whole of it.
+std/bootstrap.qll   Bool, Option, List, Syntax — the ABI, and the whole of it.
                     Elaborated with no elaborator (Prelude.Load, std: null).
-std/lib.fun         if, the operators with their fixity, the bare one-per-language
+std/lib.qll         if, the operators with their fixity, the bare one-per-language
                     helpers (not, and, or, min, max, abs), the Eq trait and impls.
-std/list.fun        Lists: the list library — one unit per module, every binding pub.
-std/option.fun      Options: the option library.
-std/type.fun        the `type` macro and its token helpers.
-std/stage2.fun      the `std` unit a program imports: it publishes the modules as
+std/list.qll        Lists: the list library — one unit per module, every binding pub.
+std/option.qll      Options: the option library.
+std/type.qll        the `type` macro and its token helpers.
+std/stage2.qll      the `std` unit a program imports: it publishes the modules as
                     members (Std.Lists, Std.Options) instead of flattening them.
 std/README.md       this file.
 ```
 
 Each unit is elaborated once per process, against the units below it
-(`src/Fun.Compiler/Prelude.cs` holds the order). The bootstrap sees only the
+(`src/Quill.Compiler/Prelude.cs` holds the order). The bootstrap sees only the
 builtins; a library unit sees the builtins with the units below it served to its
 imports; `std` is bound as `Std` in a program's base context. **`std` is the
 only unit a program may import** — `import "std/bootstrap"` is `import not
@@ -91,7 +91,7 @@ it — there is no `import "std/list"`.
 | Unit paths and the binding | `std`, `std/bootstrap`, `Std` | `Prelude.cs` |
 
 The compiler reaches the prelude's shapes through the builders
-`std/bootstrap.fun` publishes (19 of them: `mk_option`, `mk_list`, `mk_span`,
+`std/bootstrap.qll` publishes (19 of them: `mk_option`, `mk_list`, `mk_span`,
 `mk_id`, `mk_path`, `mk_path_choice`, `i64_to_bool`, `explicitness`, `fixity`,
 `delim`, `assoc`, `hole_kind`, `atom_ty`, `macro_ann`, `pat_wild`, `pat_var`,
 `pat_atom`, `pat_prod`, `pat_or`), so no constructor, field or leaf tag is
@@ -100,7 +100,7 @@ it is otherwise a library function.
 
 ## The interface is declared on the compiler side
 
-`src/Fun.Kernel/PreludeAbi.cs` **is** the bootstrap↔compiler interface: the builders
+`src/Quill.Kernel/PreludeAbi.cs` **is** the bootstrap↔compiler interface: the builders
 the prelude publishes, the type and module names the compiler names, and the
 constructor tags it writes and reads back. The compiler spells a prelude name **only
 there**; every consumer references the declaration. `Prelude.Verify` resolves the
@@ -111,14 +111,14 @@ use.
 The declaration mirrors the prelude's shape, and that is the accepted cost of the
 chosen route: the interface is a fact about the compiler's *usage* — which names
 matter, in which role — which the prelude source alone cannot supply. Generating the
-C# names from `bootstrap.fun` was deferred for that reason, and because a
-`netstandard2.0` Roslyn generator cannot reference `Fun.Expand`; it would have to be
+C# names from `bootstrap.qll` was deferred for that reason, and because a
+`netstandard2.0` Roslyn generator cannot reference `Quill.Expand`; it would have to be
 an MSBuild `Exec` of a console tool.
 
 Two things are deliberately not in the declaration:
 
 - **`Type`** — the compiler spells it, and it belongs to the elaborator
-  (`src/Fun.Compiler/Elaborator.cs`), not to `std`.
+  (`src/Quill.Compiler/Elaborator.cs`), not to `std`.
 - **The unit paths** — `Prelude.Path`, `Prelude.BootstrapPath` and `Prelude.Binding`
   are their single source; the declaration references them, it does not restate them.
 

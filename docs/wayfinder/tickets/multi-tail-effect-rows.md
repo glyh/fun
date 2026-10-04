@@ -1,6 +1,6 @@
 ---
 title: Effect rows with several row variables (union of tails)
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

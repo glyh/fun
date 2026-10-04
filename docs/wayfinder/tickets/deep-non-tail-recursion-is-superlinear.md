@@ -1,6 +1,6 @@
 ---
 title: Deep non-tail recursion runs in superlinear time
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:research
 status: closed
@@ -66,10 +66,10 @@ runtime whose GC scans stacks.
 
 ## Findings (integrator, 2026-09-27): the port does not have it
 
-The probe the ticket used, against the port (`test/Fun.Conformance` on `/tmp/deep.fun`, one
+The probe the ticket used, against the port (`test/Quill.Conformance` on `/tmp/deep.qll`, one
 `dotnet` invocation per row, so each row carries the runner's startup):
 
-```fun
+```quill
 rec t : I64 -> I64 = fn(n) { if (n == 0) { 0 } else { t(n - 1) + 1 } };
 t(N)
 ```
@@ -84,7 +84,7 @@ t(N)
 **2x per doubling, not 4x** — the superlinear step is gone, and 400k costs a third of what it cost
 in the prototype. The cause is the one this ticket prescribed: object-language calls do not consume
 the native stack. `Kont` is a real frame machine in the port's evaluator
-(`src/Fun.Compiler/Nbe.{Rec,Enum,Effects,Match,Macros}.cs`), and `CLAUDE.md` states it as a rule
+(`src/Quill.Compiler/Nbe.{Rec,Enum,Effects,Match,Macros}.cs`), and `CLAUDE.md` states it as a rule
 (*"The evaluator never recurses on the native stack per object-level call"*) rather than as a
 property anyone has to preserve by hand.
 

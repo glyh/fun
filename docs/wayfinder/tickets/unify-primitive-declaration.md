@@ -1,6 +1,6 @@
 ---
 title: One declaration per primitive
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

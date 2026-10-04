@@ -19,7 +19,7 @@ dissolve under that ruling, not to need work of its own. Verified by the integra
 
 ## The program
 
-```fun
+```quill
 { M = module { pub pattern HasX(a) = struct { x: a; _ } }; 1 }
 ```
 
@@ -54,7 +54,7 @@ Evidence for the `:87` half, so it is not re-probed: `{ M = module { pub pattern
 
 ## Reading
 
-- `dotnet/src/Fun.Compiler/Elaborator.Patterns.cs:75` and `NeedsDirectMatch`
+- `dotnet/src/Quill.Compiler/Elaborator.Patterns.cs:75` and `NeedsDirectMatch`
 - [the pattern-synonym ruling](port-pattern-synonym-generalizes.md)
 
 ## Resolution (2026-09-25) — closed

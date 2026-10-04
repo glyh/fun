@@ -72,7 +72,7 @@ The parser already accepts dotted impl trait heads, but elaboration currently re
 
 Decide whether this phase should support qualified trait impls such as:
 
-```fun
+```quill
 impl M.Eq(I64) = module ... end
 ```
 
@@ -82,7 +82,7 @@ If not, keep the existing rejection but add tests that document the current limi
 
 Define stdlib as a module source in tests, for example:
 
-```fun
+```quill
 pub trait Eq(a) = sig
   eq : a -> a -> Bool
 end
@@ -99,7 +99,7 @@ pub (!=) = fn[A : Type](lhs, rhs) -> not((==)[A](lhs, rhs))
 
 The exact annotations may need to stay explicit as:
 
-```fun
+```quill
 pub (==) : [A : Eq] -> A -> A -> Bool = ...
 ```
 

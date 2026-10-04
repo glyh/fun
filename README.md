@@ -1,6 +1,6 @@
-# fun
+# quill
 
-`fun` is an experimental programming language compiler/interpreter. The implementation is
+`quill` is an experimental programming language compiler/interpreter. The implementation is
 written in **C# (.NET 10)**: `src/` is the compiler, `std/` the prelude source, `test/` the
 suite and the runners.
 
@@ -16,11 +16,11 @@ mutable references, and a hygienic enforestation-based macro system.
 
 ```sh
 dotnet build                                  # the compiler
-dotnet test test/Fun.Tests                    # xUnit: internals (shapes, unifier, machine, budget)
-dotnet run --project test/Fun.Conformance     # the shared language suite
+dotnet test test/Quill.Tests                    # xUnit: internals (shapes, unifier, machine, budget)
+dotnet run --project test/Quill.Conformance     # the shared language suite
 ```
 
-`src/Fun.Cli` is a stub (no REPL yet); run a single program through the suite instead.
+`src/Quill.Cli` is a stub (no REPL yet); run a single program through the suite instead.
 
 ## Design philosophy
 
@@ -49,6 +49,6 @@ source → reader → enforestation → expanded Syntax → elaboration → Core
   When another doc disagrees on completion status, STATUS wins.
 - **[`docs/wayfinder/`](docs/wayfinder/)** — the direction map: what has been
   *decided*, what is still *open* (tickets), and what is still *fog*. Start at the
-  [Fun compiler design map](docs/wayfinder/fun-design-map.md). This is
+  [Fun compiler design map](docs/wayfinder/quill-design-map.md). This is
   also where the design detail for every completed direction lives (under
   `topics/`), plus the macro-system reference library (`macro-system/`).

@@ -21,7 +21,7 @@ Expect the largest single jump in the conformance count: of the 296 failing case
 
 ## Scope
 
-- Make `dotnet/std/stage2.fun` **the** prelude. It already compiles as a unit
+- Make `dotnet/std/stage2.qll` **the** prelude. It already compiles as a unit
   (`InterleavingTests.Stage2CompilesAsAUnit`) and already opens with
   `Core = import "std"; export Core; open Core;`, so it re-exports stage 1 by
   construction. `Prelude.Binding` (`stdlib`) must resolve to stage 2, and
@@ -30,7 +30,7 @@ Expect the largest single jump in the conformance count: of the 296 failing case
   stage 1's `if` does today: the order groups (`disjunction` … `negation`), the
   `infix`/`prefix` declarations for `&&`, `||`, `==`, `!=`, `<`, `>`, `<=`, `>=`,
   `+`, `-`, `*`, `/`, `%`, `not`, the `Eq` trait and its impls, and the stage-2
-  syntax forms (`type`, and whatever else `stage2.fun` declares).
+  syntax forms (`type`, and whatever else `stage2.qll` declares).
 - Stage 1 stays a separate elaboration: stage 2 imports it as a unit, so stage 1 is
   still elaborated once per process against the builtins alone. Do not inline them.
 
@@ -80,7 +80,7 @@ defect found on the way is reproduced, ticketed, fixed **in C# only**, and liste
 
 ## Grilled (2026-09-18)
 
-**`stage2.fun`'s own import of stage 1.** `dotnet/std/stage2.fun` opens with
+**`stage2.qll`'s own import of stage 1.** `dotnet/std/stage2.qll` opens with
 `Core = import "std"; export Core; open Core;` — it imports stage 1 under the same
 unit name `"std"` that stage 2 is about to become, so once `"std"` resolves to
 stage 2 that line points at itself.
@@ -96,7 +96,7 @@ no name in the glossary, and the exact kind of unwritten invariant
 [domain-model-core-tt](domain-model-core-tt.md) exists to stop the port from
 inheriting.
 
-Cost accepted: this one line of `dotnet/std/stage2.fun` diverges from the prototype's
+Cost accepted: this one line of `dotnet/std/stage2.qll` diverges from the prototype's
 `Elab_prelude.stage2_source`, which has no unit loader and so has no such collision.
 Note the divergence in the resolution; it is a port-only difference, not a language
 change, so it does not belong in `prototype-divergences.txt`.
@@ -109,13 +109,13 @@ re-verifying both runners.
 
 `stdlib` and `import "std"` are **stage 2**, which imports stage 1 as
 `"std/stage1"` and re-exports it; every stage-2 stopgap is deleted
-(`dotnet/std/stage1.fun`, `dotnet/std/stage2.fun`). 393 → **611/689**; the
+(`dotnet/std/stage1.qll`, `dotnet/std/stage2.qll`). 393 → **611/689**; the
 "the infix operator …" (199 cases) and "prelude syntax roles" (95) groups are gone.
 xUnit 172 → 168 (four cases pinned to the deleted stopgap; two added).
 
 Two decisions recorded on the way: reflection anchors on stage 1, and a loader
 seeds its macro metas from its prelude stage at construction. One port-only
-divergence is noted at the end of this ticket: a line of `dotnet/std/stage2.fun`
+divergence is noted at the end of this ticket: a line of `dotnet/std/stage2.qll`
 (the unit loader), which is a port difference, not a language change, so it is not
 listed in `test/conformance/prototype-divergences.txt`.
 

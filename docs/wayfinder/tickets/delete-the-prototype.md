@@ -1,6 +1,6 @@
 ---
 title: "Delete the OCaml prototype, leaving the C# port as the implementation"
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -69,7 +69,7 @@ nothing is left that depends on it".
    *not reachable, here is why*. **After deletion these become unfalsifiable** — there is no
    reference left to compare against — which is the one thing that cannot be fixed later.
 2. **The differential harness reads `port-fails: 0`** on the final tree (`scripts/differential.sh`;
-   every `.fun` in the repo through both runners).
+   every `.qll` in the repo through both runners).
 3. Nothing else. Specifically **not** required: the capture fix, generic impls, the non-nominal
    pattern head, nested field patterns, identity-survives-re-evaluation, the synonym's implicit
    type parameters, the hang, or the seven unreachable refusal sites. Each is a fix or a feature,
@@ -88,7 +88,7 @@ change that deliberately made both implementations refuse.
 `dune-project`, `fun.opam`, `_opam/`, `scripts/differential.sh`, `scripts/README.md`.
 
 **Verified: nothing under `dotnet/` reads any of it.** No `lib/` reference in `dotnet/**/*.cs` or
-`dotnet/**/*.fun`, and the port already carries its own prelude copies in `dotnet/std/`.
+`dotnet/**/*.qll`, and the port already carries its own prelude copies in `dotnet/std/`.
 
 ## What goes with it, and what it costs
 

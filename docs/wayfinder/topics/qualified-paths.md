@@ -6,7 +6,7 @@ Qualified access uses ordinary struct field access in expression and type positi
 
 Expression-side qualified names are parsed as chained field access:
 
-```fun
+```quill
 M.Red
 A.B.X(7)
 M.Point
@@ -18,7 +18,7 @@ Public types and constructors inside structs are exposed as public fields, so ex
 
 Pattern heads preserve their path during surface parsing so elaboration can validate the path against the scrutinee type:
 
-```fun
+```quill
 match c do
 | M.Red -> 1
 | M.Green -> 2
@@ -27,7 +27,7 @@ end
 
 Nested paths and aliases work by resolving through public struct fields:
 
-```fun
+```quill
 do
   N = M
   match M.Red do
@@ -42,7 +42,7 @@ After validation, runtime matching still uses the resolved nominal constructor i
 
 Record patterns also support qualified type paths:
 
-```fun
+```quill
 match p do
 | M.Point {x; y} -> x + y
 end

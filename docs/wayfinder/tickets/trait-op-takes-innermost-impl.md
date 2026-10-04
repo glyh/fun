@@ -1,6 +1,6 @@
 ---
 title: Impl resolution takes the innermost impl, not the most precise matching one
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -74,11 +74,11 @@ Size.size(Some(5))                                       -- 2; Option(A) is the 
 **Why implicit, not a binder list.** An impl's head is *matched* against the use's
 argument types, and a free name in a pattern already binds without declaration
 (`match (c) { Some(a) => a }`; `pub pattern Var(name) = Expr.RawVar(_, name)` in
-`std/stage1.fun`). Declaring impl variables would make the head the one matched
+`std/stage1.qll`). Declaring impl variables would make the head the one matched
 position in the language that needs them declared.
 
 **Rejected: `impl[A] Size(Option(A))`.** `[…]` means *omittable at application* —
-`fn[A : Type](lhs, rhs)`, `[A : Eq] -> A -> A -> Bool` (`std/stage2.fun:23`). An impl
+`fn[A : Type](lhs, rhs)`, `[A : Eq] -> A -> A -> Bool` (`std/stage2.qll:23`). An impl
 is never applied; its variables are solved by matching. Borrowing the bracket would
 give it a second meaning. `impl(A) …` was also rejected: `(…)` after a keyword or a
 defined name means that thing's parameters (`trait Size(A)`, `type Option(A)` →
@@ -171,7 +171,7 @@ because no report was ever written.
 **Both open items the reconnaissance left are answered as cases**, which is the strongest form the
 answer could take: a generic impl survives `open` (`values/trait-generic-impl-through-open`, `2`),
 `export` (`…-through-export`, `3`), and an **imported unit** (`imports/trait-generic-impl-through-import`,
-`5`, with its own `unit-lib.fun` publishing the generic impl; `…-in-imported-module` alongside).
+`5`, with its own `unit-lib.qll` publishing the generic impl; `…-in-imported-module` alongside).
 The `export` path needed a real change — `Elaborator.Export.cs` had no place to carry `Vars` — so
 item 4 was not bookkeeping after all.
 

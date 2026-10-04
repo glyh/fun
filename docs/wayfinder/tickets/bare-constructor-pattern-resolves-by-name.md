@@ -1,6 +1,6 @@
 ---
 title: A bare constructor pattern resolves by name among the scrutinee's constructors
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -13,7 +13,7 @@ blocked_by:
 # A bare constructor pattern resolves by name among the scrutinee's constructors
 
 Found while porting `match` to C# (2026-09-16). **Fixed in the C# port only**
-(`dotnet/src/Fun.Compiler/Elaborator.Enum.cs`, `ResolveConstructorHead`); the
+(`dotnet/src/Quill.Compiler/Elaborator.Enum.cs`, `ResolveConstructorHead`); the
 OCaml prototype keeps the defect.
 
 ## Decided (2026-09-16, user)
@@ -73,5 +73,5 @@ Closed after re-running both runners on `main @ d58af64`.
 `dune test --root . test/conformance` reports `690 cases, 0 failed, 19 known
 prototype divergences`, so `elaborate/bare-constructor-pattern-needs-open` and
 `elaborate/bare-constructor-pattern-shadowed-by-value` fail in the prototype as
-listed; `cd dotnet && dotnet run --project test/Fun.Conformance --no-build` passes
+listed; `cd dotnet && dotnet run --project test/Quill.Conformance --no-build` passes
 both (neither is among the 13 unrelated residue failures), so the port is correct.

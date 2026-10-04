@@ -11,9 +11,9 @@ A case may only depend on what a program produces — never on compiler internal
 ## Layout
 
 ```text
-cases/<area>/<name>.fun              the program (an expression)
+cases/<area>/<name>.qll              the program (an expression)
 cases/<area>/<name>.expect           what it must produce
-cases/<area>/<name>.unit-<unit>.fun  an extra compilation unit, importable as "<unit>"
+cases/<area>/<name>.unit-<unit>.qll  an extra compilation unit, importable as "<unit>"
 ```
 
 Areas are `values` (evaluation), `macros` (macro expansion), `imports`
@@ -34,12 +34,12 @@ not whatever an implementation happens to do.
 
 `error` is deliberately coarse: an error's class and wording are
 implementation-specific. Tests that must assert a *particular* error belong in
-`test/Fun.Tests` (xUnit), not here.
+`test/Quill.Tests` (xUnit), not here.
 
 ## Running
 
 ```sh
-dotnet run --project test/Fun.Conformance
+dotnet run --project test/Quill.Conformance
 ```
 
 It prints `conformance: <n> cases, <k> failed`, naming each failure's file, what

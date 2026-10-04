@@ -18,13 +18,13 @@ that guard: the fix removes the loops that exist, and this is what would catch o
 
 ## The gap
 
-`dotnet/test/Fun.Conformance/Program.cs`'s `RunCase` and `RunFile` both call
+`dotnet/test/Quill.Conformance/Program.cs`'s `RunCase` and `RunFile` both call
 `Driver.Elaborate(...)` with **no time bound**; only `Driver.Run` is timeboxed. So a regression in
 the reader (or anywhere in elaboration) does not make the suite print `FAIL` — the suite simply
 **never returns**. The only thing that fails it is the `timeout 300` in the documented command:
 
 ```sh
-cd dotnet && timeout 300 dotnet run --project test/Fun.Conformance --no-build | tail -1
+cd dotnet && timeout 300 dotnet run --project test/Quill.Conformance --no-build | tail -1
 ```
 
 Run it without that wrapper — which is the obvious thing to do when debugging a *single* case —
@@ -68,11 +68,11 @@ case, and an invariant failure is still reported as this case's failure rather t
 run.
 
 **Verified by construction, by the integrator, in a throwaway worktree** — not taken on the fork's
-word. `RequireAdvance` (`src/Fun.Expand/Enforest.cs:576`) was made to never fire, and:
+word. `RequireAdvance` (`src/Quill.Expand/Enforest.cs:576`) was made to never fire, and:
 
 ```
-FAIL elaborate/struct-field-comma.fun: elaboration did not finish within 60s
-FAIL elaborate/struct-field-trailing-comma.fun: elaboration did not finish within 60s
+FAIL elaborate/struct-field-comma.qll: elaboration did not finish within 60s
+FAIL elaborate/struct-field-trailing-comma.qll: elaboration did not finish within 60s
 conformance: 776 cases, 2 failed
 ```
 
@@ -88,7 +88,7 @@ preemption: it makes a hang *visible and named*, which is all the ticket asked f
 
 ## Reading
 
-- `dotnet/test/Fun.Conformance/Program.cs` — `RunCase`, `RunFile`, and the `Driver.Run` call that
+- `dotnet/test/Quill.Conformance/Program.cs` — `RunCase`, `RunFile`, and the `Driver.Run` call that
   already has the shape to copy
 - [the reader loop](port-reader-loops-on-struct-field-comma.md) — the bug whose signature is a
   hang, and the four cases that depend on termination being enforced by something

@@ -1,6 +1,6 @@
 ---
 title: A meta in a method's signature captures `self`, so calling the method fails
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -23,7 +23,7 @@ an **inserted meta** in a parameter's type carries `self` in its spine. At a cal
 the method's `VPi` is applied to a real struct value, that spine entry is no
 longer a variable, and solving the meta is no longer a pattern problem.
 
-```fun
+```quill
 { S = struct { k : I64; pub method keep(r : Ref(I64)) : Ref(I64) { r } };
   s = S{ k = 2 }; x = ref(40); y = s.keep(x); 7 }
 // UnifyError(VarNotInSpine(59))
@@ -55,7 +55,7 @@ user type with an implicit argument.
 Implemented by a fork (`general-purpose` on glm-5.3; fix `cea0b3d`, tests `7460131`, merged
 `6b706b8`), and verified by the integrator: **conformance 779 cases, 0 failed**, xUnit **185/185**.
 
-**Root cause.** `MethodType`/`MethodBody` (`src/Fun.Compiler/Elaborator.Structs.cs:112`, `:131`)
+**Root cause.** `MethodType`/`MethodBody` (`src/Quill.Compiler/Elaborator.Structs.cs:112`, `:131`)
 elaborated a written parameter or result type *after* `BindAnonymous(self)`, so `FreshMeta`'s
 `EntryKinds` spine listed `self`. At a call the receiver is substituted in, `Unify.Invert`
 (`Unify.cs:144`) finds a non-variable in the spine and refuses: `a meta's spine argument is not a

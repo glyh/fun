@@ -15,11 +15,11 @@ strengthening its cases, **verified by the integrator in both runners**: an inli
 polymorphic lambda and the same lambda bound to a name behave differently, and the two
 implementations are wrong in *opposite* directions.
 
-```fun
--- inline: implicit-lambda-argument-inline.fun  (expect 7)
+```quill
+-- inline: implicit-lambda-argument-inline.qll  (expect 7)
 { h = fn(g) { g[I64](7) }; h(fn[A : Type](a : A) { a }) }
 
--- named: implicit-lambda-argument-named.fun  (expect 7)
+-- named: implicit-lambda-argument-named.qll  (expect 7)
 { ch = fn[A : Type](a : A) { a }; h = fn(g) { g[I64](7) }; h(ch) }
 ```
 
@@ -33,7 +33,7 @@ implementations are wrong in *opposite* directions.
 **Reaffirmed and widened by the user (2026-09-20): all three of these are accepted**, and
 none of them is an error —
 
-```fun
+```quill
 { h = fn(g) { g[I64](7) }; h(fn[A : Type](a : A) { a }) }              -- inline, → 7
 { ch = fn[A : Type](a : A) { a }; h = fn(g) { g[I64](7) }; h(ch) }    -- named,  → 7
 { h = fn(g) { g[I64]; 7 }; h(fn[A : Type](a : A) { a }) }             -- no result applied, → 7
@@ -109,7 +109,7 @@ rule does for names.
 **The one spot that needs care, and may need a ruling:** the scoping must distinguish a
 type-level implicit parameter (`[A : Type]`) from a dictionary or effect-row implicit
 parameter, or `InsertHiddenDicts` is lost — the fork *observed* that a naive version
-breaks the prelude (`dotnet/std/stage2.fun:23-24` defines `(==)`/`(!=)` as
+breaks the prelude (`dotnet/std/stage2.qll:23-24` defines `(==)`/`(!=)` as
 `fn[A : Type](lhs, rhs) { … }` checked against `[A : Eq] -> …`), with "missing
 implementation of Eq" / "cannot unify VPi with VPi". Two routes: gate on the implicit
 parameter's written type being `Type`, or teach the instantiated path to run
@@ -132,7 +132,7 @@ xUnit 182/182; `dune test` and `dune test test/conformance` green — 733 cases,
   to `(Lam, VPi)`, which unifies the written parameter type and binds the parameter
   rigidly; at the call site the domain is already `I64`, so `a : A` failed with `A` rigid.
 - **The hazard was wider than this ticket predicted**, and only probing found it: the
-  naive guard-drop broke **16** cases, not merely `stage2.fun`'s `(==)`/`(!=)`. The whole
+  naive guard-drop broke **16** cases, not merely `stage2.qll`'s `(==)`/`(!=)`. The whole
   type-case family (`elab-041`, `core-072..084`, `type-case-refines-variable`) and the
   value-level implicit `[n : I64]` case need the rigid treatment — heterogeneous matches
   are not inferable, and a value implicit's runtime value must flow through the lambda.

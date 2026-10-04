@@ -1,6 +1,6 @@
 ---
 title: A trait parameter may be a type constructor
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -13,7 +13,7 @@ blocked_by: []
 # A trait parameter may be a type constructor
 
 Split out 2026-10-03 while probing the last item of the
-[universes and level polymorphism](../fun-design-map.md#fog) fog: the sharpening
+[universes and level polymorphism](../quill-design-map.md#fog) fog: the sharpening
 definition named there — a `Functor`-shaped trait — turned out to be blocked by a
 **kind**, not a universe tier. This ticket is that measured defect. Tiers stayed fog.
 
@@ -21,7 +21,7 @@ definition named there — a `Functor`-shaped trait — turned out to be blocked
 
 The topic's own sharpening move was a `Functor` trait. Written through the runner:
 
-```fun
+```quill
 trait Functor(f) = sig {
   map : [A : Type, B : Type] -> (A -> B) -> f(A) -> f(B)
 };
@@ -36,7 +36,7 @@ ELAB applying non-function while inferring the form at <unknown>:3:44-3:48
 as `Type` (`Value.VU.Instance`), and `f` here is a type *constructor*
 (`Type -> Type`), not a type. The same shape works everywhere else:
 
-```fun
+```quill
 apply_fn = fn(f : Type -> Type, a : Type) : Type { f(a) };   # -> VALUE VNominal
 apply_fn(List, I64)
 ```
@@ -62,7 +62,7 @@ parameter's kind — `Eq(a)` still infers `a : Type`, and `Functor(f)` infers
 
 Measured working:
 
-```fun
+```quill
 trait Functor(f) = sig { map : [A : Type, B : Type] -> (A -> B) -> f(A) -> f(B) };
 impl list_functor : Functor(List) = module {
   fn map[A : Type, B : Type](g : A -> B, xs : List(A)) : List(B) { Std.Lists.map(g, xs) }
@@ -86,13 +86,13 @@ fallback inside `Solve`. Lean ships exactly this as `foApprox`, a mode enabled
 deliberately at the call sites that need it; the same flag name and the same default
 off are used here.
 
-- **`MetaContext.FoApprox`** (`src/Fun.Compiler/MetaContext.cs`) — a documented `bool`
+- **`MetaContext.FoApprox`** (`src/Quill.Compiler/MetaContext.cs`) — a documented `bool`
   defaulting to **false**. `Matching` is the existing precedent for a mode flag set
   around a region.
-- **`Unify.Approximate`** (`src/Fun.Compiler/Unify.cs`) — under the flag, a spine that is
+- **`Unify.Approximate`** (`src/Quill.Compiler/Unify.cs`) — under the flag, a spine that is
   not a pattern is solved by approximation instead of being refused; with the flag off,
   `Invert`'s refusal stands byte for byte.
-- **`Elaborator.Approx`** (`src/Fun.Compiler/Elaborator.Implicits.cs`) — turns the flag on
+- **`Elaborator.Approx`** (`src/Quill.Compiler/Elaborator.Implicits.cs`) — turns the flag on
   around the explicit argument check in `InferAp` and `InferApWithPendingDicts`, and
   nowhere else. An argument checked against an arrow's domain is what determines the
   hidden type arguments before it.

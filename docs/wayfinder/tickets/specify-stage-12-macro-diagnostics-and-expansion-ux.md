@@ -1,6 +1,6 @@
 ---
 title: Stage 12 macro diagnostics / expansion UX spec
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: open

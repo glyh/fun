@@ -1,6 +1,6 @@
 ---
 title: Imported modules elaborate in the importer's context
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
   - severity:soundness
@@ -13,7 +13,7 @@ blocked_by:
 
 ## Question
 
-An imported `.fun` module is elaborated in the **importing expression's**
+An imported `.qll` module is elaborated in the **importing expression's**
 elaboration context, not in a fresh base context. Should it be? Today this means
 a module sees whatever the importer happened to have in scope — in particular
 the prelude, which the top-level entry points open by default.
@@ -210,7 +210,7 @@ fixity, which the use node now carries.
 
 ## Found and fixed while closing this
 
-**No macro call inside a `.fun` unit expanded, its own macros included.** Not a
+**No macro call inside a `.qll` unit expanded, its own macros included.** Not a
 regression - pristine `HEAD` behaved the same - and not something any of the
 fifteen rules named, but it made "macros are members" untestable one file down.
 

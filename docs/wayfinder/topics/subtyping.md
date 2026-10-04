@@ -1,6 +1,6 @@
-# There is no subtyping in `fun`
+# There is no subtyping in `quill`
 
-`fun` has no subtyping relation. NbE convertibility is the only equality, records are
+`quill` has no subtyping relation. NbE convertibility is the only equality, records are
 structural and exact, and there is no coercion term anywhere in the implementation.
 The one place width is admitted is module↔signature unification, and it is a property
 of signatures, not a general relation between types.
@@ -38,7 +38,7 @@ f(module { pub x = 42 })                  →  error: no member `y`
 ```
 
 Extra members are tolerated; missing members are refused. It is pinned by
-`test/conformance/cases/values/core-021.fun` and was already documented as
+`test/conformance/cases/values/core-021.qll` and was already documented as
 "module-type unification (width subtyping)" in
 [`port-structs-records-signatures.md`](../tickets/port-structs-records-signatures.md).
 

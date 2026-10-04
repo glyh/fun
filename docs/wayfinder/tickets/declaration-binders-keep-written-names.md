@@ -1,6 +1,6 @@
 ---
 title: Declaration binders keep their written name as their resolved name
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -55,7 +55,7 @@ keeps its written label, used only for member access (`M.x`), as struct fields
 do. The elaborator never finds a binder by its written spelling; its macro table
 is keyed by resolved name.
 
-```fun
+```quill
 type Tmp = Yes | No;
 macro with_tmp(e) : Expr { quote({ type Tmp = A | B; $e }) };
 with_tmp(Tmp.Yes)   // the user's Tmp, not the macro's

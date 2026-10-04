@@ -1,6 +1,6 @@
 ---
 title: Type-aware macro interleaving handshake
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed

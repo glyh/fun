@@ -83,7 +83,7 @@ run time values are closed and every pattern is decidable.
 
 ## Where the port refuses
 
-`dotnet/src/Fun.Compiler/Nbe.Match.cs:86-88`:
+`dotnet/src/Quill.Compiler/Nbe.Match.cs:86-88`:
 
 ```csharp
 private static T Stuck<T>(Value value) => value is Value.VNeutral or Value.VVar or Value.VMeta
@@ -108,7 +108,7 @@ unreachable arm of a stuck match).
 
 **Construct the program that reaches it before writing any code.** The shape is
 
-```fun
+```quill
 { T = fn(x : Option(I64)) { match (Some(x)) { Some(Some(y)) => A, _ => B } };
   … }
 ```
@@ -130,7 +130,7 @@ divergence gets noticed if the prototype is ever corrected.
 
 - `lib/backend/interp/nbe.ml:556-558` (`stuck_match` — the frame the port mirrors),
   `:784-810` (the rule and the fallback this ticket rejects)
-- `dotnet/src/Fun.Compiler/Nbe.StuckMatch.cs` (all of it — the head-unknown half and
+- `dotnet/src/Quill.Compiler/Nbe.StuckMatch.cs` (all of it — the head-unknown half and
   the note naming this gap), `Nbe.Match.cs`, `Nbe.Patterns.cs`
 - [the latent form gaps](port-latent-form-gaps.md) G6, and
   [match on a closure crashes the evaluator](match-on-a-closure-crashes-the-evaluator.md)

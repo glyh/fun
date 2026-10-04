@@ -1,6 +1,6 @@
 ---
 title: Does a macro own its output, or does the site?
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: open
@@ -65,7 +65,7 @@ contact with the cases `publish` currently handles — every binding variant in
 ## Why it was deferred
 
 One client. `type_decls` is the only macro in the prelude and the only `: Decl` syntax
-form (`dotnet/std/stage2.fun:174,184`); the conformance cases whose macros emit `pub`
+form (`dotnet/std/stage2.qll:174,184`); the conformance cases whose macros emit `pub`
 do so directly and are unaffected. A language feature with one caller, costing a new
 `Syntax.Site` nominal and a new ambient hole kind — six reflection sites per
 `CLAUDE.md`, in both implementations — that buys no cases on its own.

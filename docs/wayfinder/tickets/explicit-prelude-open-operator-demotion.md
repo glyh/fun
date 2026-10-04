@@ -1,6 +1,6 @@
 ---
 title: Explicit prelude open for operator demotion
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -150,7 +150,7 @@ Steps 1–2 of the *structural* work are in; 789 tests green. What changed:
   (`Core_loader.load_syntax_exports`, `Macro_driver.visit_macros`) short-circuit
   `"std"` to empty — the prelude's operators/`if`/`&&`/`||` are still delivered by
   `base_operators` + `builtin_syntax_hook` in this increment, so `"std"`
-  contributes nothing extra yet and must not try to read a `std.fun` file.
+  contributes nothing extra yet and must not try to read a `std.qll` file.
   `Compiler_names.Module_name.std_import_path` is the single source of the name.
 
 This is a deliberately *non-breaking, additive* stopping point: `open (import
@@ -227,7 +227,7 @@ explicit dependency injection. 791 tests green.
 - The prelude cannot be named from the expand/loader layers, so the exports are
   injected downward: entry points and the REPL pass
   `Lazy.force Elab_prelude.stdlib_syntax_exports`; `Core_loader.create` takes a
-  `?builtin_syntax` and threads it into every module parse (so imported `.fun`
+  `?builtin_syntax` and threads it into every module parse (so imported `.qll`
   files still see the operators) and returns it for the reserved `import "std"`.
 - `Macro_driver.visit_macros` passes the loader's `builtin_syntax` when parsing
   imported modules for macros.
@@ -273,7 +273,7 @@ strictly through `open (import "std")`. 792 tests green.
 Ticket substance complete: operators are library declarations, delivery is the
 single explicit-`open` path, no global mutable ref, and the phase rule is strict.
 The remaining implicit `open_stdlib` survives only as a ctx-extension helper for
-macro compilation. A genuinely module-level `open` form (so imported `.fun` files
+macro compilation. A genuinely module-level `open` form (so imported `.qll` files
 are strict too, rather than auto-opened by the loader) is the one loose end, and
 depends on adding module-level `open` support — out of scope here.
 
@@ -284,7 +284,7 @@ depends on adding module-level `open` support — out of scope here.
   mostly uses prim functions (`lt_i64`, `not(...)`) and prefix-paren `(==)` forms;
   step 4 must keep the prelude authored to respect advanced-order.
 - **Deferred sub-question (revisit later):** whether the prelude should eventually
-  become a genuine shipped `.fun` file imported by real path (zero special-casing,
+  become a genuine shipped `.qll` file imported by real path (zero special-casing,
   maximal C# uniformity) rather than a reserved builtin `"std"`. Not needed now.
 
 ## Resolution
@@ -301,7 +301,7 @@ are gone — prelude syntax is delivered strictly through `open (import "std")`
 Two loose ends were split into their own tickets rather than block closure:
 
 - [Module-level open form (strict imported modules)](module-level-open-strict-imported-modules.md)
-  — imported `.fun` modules are still auto-opened by the loader because there is no
+  — imported `.qll` modules are still auto-opened by the loader because there is no
   module-level `open` form yet; adding it lets modules be strict too.
 - [Retire load_imports_in_terms and the open_stdlib survivor](retire-static-import-harvest-and-open-stdlib.md)
   — the static import scan and `open_stdlib` are off the delivery path but not yet

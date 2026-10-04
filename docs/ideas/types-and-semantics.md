@@ -71,7 +71,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/v3z7r8/the_appeal_of_bidi
 resources explaining it, score 99, 13 comments, 2025-12 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1pzjqjb/i_wrote_a_bidirectional_type_inference_tutorial/
 
-**Bearing on `fun`.** Already has it, decided: `Elaborator` runs `infer` and `check` over
+**Bearing on `quill`.** Already has it, decided: `Elaborator` runs `infer` and `check` over
 `Syntax.t` with higher-order metas and Miller-pattern unification
 (`docs/wayfinder/topics/dependent-types.md`). The interesting open residue is not the mode
 split but where the switch points sit — tickets `check-against-implicit-type-inserts-first`,
@@ -107,9 +107,9 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1gkjkz4/how_to_implement_
 · Type Inference in Rust and C++, score 55, 18 comments, 2025-01 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1i6j043/type_inference_in_rust_and_c/
 
-**Bearing on `fun`.** Has it differently: the push half is check mode against an expected type,
+**Bearing on `quill`.** Has it differently: the push half is check mode against an expected type,
 the pull half is inference plus implicit insertion, and unsolved metas at a `let` are
-generalised rather than rejected — `port-generalise-under-check` is merged. `fun` goes further
+generalised rather than rejected — `port-generalise-under-check` is merged. `quill` goes further
 than local inference in one direction (metas may be solved by *evaluating* the term, within the
 evaluation budget) and no further in the other.
 
@@ -158,7 +158,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1ijmxbc/polysubml_a_simpl
 · Thoughts about static, but fully inferred, typing, score 24, 46 comments, 2023-07 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/14t96qf/thoughts_about_static_but_fully_inferred_typing/
 
-**Bearing on `fun`.** Not claimed, not ticketed: `fun` has no subtyping relation, so its only
+**Bearing on `quill`.** Not claimed, not ticketed: `quill` has no subtyping relation, so its only
 equality is NbE convertibility, and principality has nothing to fight with. What stands in the
 slot is meta solving — Miller-pattern spines, generalisation of unsolved metas at a `let` — and
 no wayfinder ticket asserts that the resulting types are principal. If one ever did, type-case
@@ -202,7 +202,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/i2hfti/strategies_for_dis
 · The Swift compiler is slow due to how types are inferred, score 69, 27 comments, 2024-06 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1dewmbu/the_swift_compiler_is_slow_due_to_how_types_are/
 
-**Bearing on `fun`.** Open and named: the map's **Diagnostics polish boundary** fog item is
+**Bearing on `quill`.** Open and named: the map's **Diagnostics polish boundary** fog item is
 exactly this trade, and it was re-measured 2026-10-01 — `Budget._site` already records the form
 and `Budget.Where()` prints it, so the cheap improvement is one line whose real cost is nine
 exact-`Message` xUnit assertions. The ticket `budget-error-names-no-source-call` is the
@@ -241,7 +241,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/ivu7oh/subtype_inference_
 · Value Restriction and Generalization in Imperative Language, score 13, 6 comments, 2025-12 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1pfpbks/value_restriction_and_generalization_in/
 
-**Bearing on `fun`.** Has it differently, and better placed: generalisation does not need a
+**Bearing on `quill`.** Has it differently, and better placed: generalisation does not need a
 syntactic value restriction because soundness is carried by the **effect row**, not by shape. A
 definition whose row names `Alloc(h)` for a heap `h` that does not occur in its type is
 **discharged** to a pure signature (`Discharge`), which is `runST`'s condition met by inference
@@ -284,7 +284,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/115c1ya/type_inference_fo
 · Adding row polymorphism to Damas-Hindley-Milner, score 48, 5 comments, 2024-10 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1gab4p6/adding_row_polymorphism_to_damashindleymilner/
 
-**Bearing on `fun`.** Has it half-way on purpose: `fun`'s rows are real and row-polymorphic
+**Bearing on `quill`.** Has it half-way on purpose: `quill`'s rows are real and row-polymorphic
 where they serve effects (`can {IO | r}`, `can _`), but record types are *declared* structural
 `struct`s with named fields, not open rows — width only appears where a pattern opts in with
 `struct { a : p; _ }` (`pattern-headed-impls`). The recursion trap is live here too:
@@ -322,7 +322,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/b8w70f/readable_rust_impl
 · How do type checkers deal with functions like this?, score 58, 29 comments, 2021-10 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/q6jyx6/how_do_type_checkers_deal_with_functions_like_this/
 
-**Bearing on `fun`.** Already has it, past where HM languages stop: a `Pi` is a `Pi`, implicit
+**Bearing on `quill`.** Already has it, past where HM languages stop: a `Pi` is a `Pi`, implicit
 Pi domains are inserted in both modes, and rank is not a special case because the core is
 dependently typed. The divergence question above is answered by the **evaluation budget** —
 a call the checker spends budget on fails loudly with the call's name instead of looping.
@@ -383,7 +383,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/oq9sql/generics_vs_traits
 · Why use a struct plus traits instead of objects?, score 35, 70 comments, 2021-07 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/oltkwt/why_use_a_struct_plus_traits_instead_of_objects/
 
-**Bearing on `fun`.** Has it, decided, with the costs priced in: nominal `trait`/`impl`,
+**Bearing on `quill`.** Has it, decided, with the costs priced in: nominal `trait`/`impl`,
 structural dictionary evidence passed hidden, bounds written `[A : Eq + Jsonable]`. The
 diagnostic cost of ad-hoc polymorphism lands on the same **evaluation budget** as everything
 else the checker runs, and the "which impl ran?" cost is answered by *naming* the resolution
@@ -425,7 +425,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1mwj302/how_java_plans_to
 2023-04 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/12jfq6s/how_does_one_determine_what_instances_a/
 
-**Bearing on `fun`.** Chose the dictionary side explicitly: trait evidence is *not* a
+**Bearing on `quill`.** Chose the dictionary side explicitly: trait evidence is *not* a
 user-facing value, dictionaries are passed hidden, and specialisation/erasure are deferred as
 optimizations (`docs/wayfinder/topics/traits.md`). Resolution is scoped search over in-scope
 impls with the most-precise one winning, and while the use's argument types are still unsolved
@@ -476,7 +476,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1e6d88x/are_ocaml_modules
 · Modules: Overcoming Stockholm and Dunning-Kruger, score 84, 44 comments, 2022-07 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/vqx19e/modules_overcoming_stockholm_and_duningkruger/
 
-**Bearing on `fun`.** Already lives there: one `struct` is record, module and namespace;
+**Bearing on `quill`.** Already lives there: one `struct` is record, module and namespace;
 modules are first-class values; impls arrive through `open` (OCaml's modular implicits, not
 Rust's global registry); a struct's fields and its bindings are one binding list. The gap is
 naming — `impl-visibility` records that scoped resolution with *no way to name an impl* is the
@@ -509,10 +509,10 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/14xmlma/is_there_a_typeth
 · Assembly interpreter inside of TypeScript's type system, score 118, 15 comments, 2022-11 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/yww51r/assembly_interpreter_inside_of_typescripts_type/
 
-**Bearing on `fun`.** Took the "types are values" side from the start: `Type : Type`, `type` is
+**Bearing on `quill`.** Took the "types are values" side from the start: `Type : Type`, `type` is
 a prelude macro rather than a reserved form, **one grammar for types** means annotations are
 read with the expression grammar so a user type operator like `~>` works everywhere, and
-type-case on the open `Type` is accepted as a design pillar. What `fun` does *not* take from
+type-case on the open `Type` is accepted as a design pillar. What `quill` does *not* take from
 the metaprogramming side is generativity by accident — a nominal declared under a run-time
 effect is generative deliberately, decided by purity in the effect row.
 
@@ -554,7 +554,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/ai1kmw/structural_typing/
 · Why You Need Subtyping, score 71, 73 comments, 2025-03 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1jk1zmd/why_you_need_subtyping/
 
-**Bearing on `fun`.** Decided, split by role: **nominal** identity for declared types and
+**Bearing on `quill`.** Decided, split by role: **nominal** identity for declared types and
 effect families (same declaration + convertible free variables; applicative by purity, or
 generative under a run-time effect), **structural** identity for `struct`s and modules. Two
 record types with the same fields are the same type; two enums declared in two places are not.
@@ -611,7 +611,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1sal879/1subml_structural
 · Why You Need Subtyping, score 71, 73 comments, 2025-03 (bodyless link post; comment evidence
 only) — https://www.reddit.com/r/ProgrammingLanguages/comments/1jk1zmd/why_you_need_subtyping/
 
-**Bearing on `fun`.** Genuinely new to the project — no ticket in `wayfinder/` proposes a
+**Bearing on `quill`.** Genuinely new to the project — no ticket in `wayfinder/` proposes a
 subtype relation, and the design map's decided list assumes convertibility is the only
 equality. The rival approach the corpus also carries is worth recording as the contrast: keep
 HM and admit a *bounded* set of subtyping rules (a mutable reference is a subtype of a shared
@@ -619,7 +619,7 @@ one, `⊥ <: T`) rather than a
 lattice — see "Is there some easy extension to Hindley Milner for a constrained set of
 subtyping relationships?", score 32, 31 comments, 2025-05 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1kqqt9w/is_there_some_easy_extension_to_hindley_milner/
-— which is roughly how `fun`'s heap brands behave *without* a subtyping rule: `Ref(h, A)` and
+— which is roughly how `quill`'s heap brands behave *without* a subtyping rule: `Ref(h, A)` and
 `Ref(h', A)` are simply different types, related by nothing.
 
 ### Gradual typing, and the boundary-check tax
@@ -672,8 +672,8 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/w1dpib/experiment_perform
 Dart migration) —
 https://www.reddit.com/r/ProgrammingLanguages/comments/12x46f5/future_of_highlevel_languages/
 
-**Bearing on `fun`.** Not proposed anywhere, and the nearest thing is the opposite trade:
-`fun` has no `dynamic`, so nothing is checked at run time that was not decided at elaboration —
+**Bearing on `quill`.** Not proposed anywhere, and the nearest thing is the opposite trade:
+`quill` has no `dynamic`, so nothing is checked at run time that was not decided at elaboration —
 except that the *checker itself* runs code under the evaluation budget. If a gradual escape
 hatch were ever wanted (`panic` already returns any `T`), the honest shape here is an
 `Absurd`-returning hole with a residual row, not a `dynamic` type. Treat as new and unwanted
@@ -730,10 +730,10 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1v538oo/languages_with_op
 · Why isn't design by contract more common?, score 81, 57 comments, 2021-01 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/l238o5/why_isnt_design_by_contract_more_common/
 · Ante: A safe, easy, low-level functional language for exploring refinement types, lifetime
-inference, and other fun features, score 75, 8 comments, 2022-06 —
+inference, and other quill features, score 75, 8 comments, 2022-06 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/vkhfhm/ante_a_safe_easy_lowlevel_functional_language_for/
 
-**Bearing on `fun`.** The *expressive* half is already the native register: the core is
+**Bearing on `quill`.** The *expressive* half is already the native register: the core is
 dependently typed, so `Vec T n -> (k : I64) -> Lt(k, n) -> T` is an ordinary `Pi` chain and
 `Absurd` names the uninhabited case. What is missing is the *automation* half — no SMT, no
 implicit proof search; proofs are supplied by the programmer or by the checker evaluating a
@@ -772,7 +772,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/14783jp/algorithms_for_ty
 38 comments, 2020-02 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/fan61g/anybody_know_a_dynamic_language_with_exhaustive/
 
-**Bearing on `fun`.** Half here already: matches compile to decision trees with
+**Bearing on `quill`.** Half here already: matches compile to decision trees with
 exhaustiveness checking, finite nominal domains are checked precisely, and the bottom type is
 `Absurd` with `all_atoms` returning an empty domain. The other half — the guard that decides a
 literal range — is deliberately conservative over the open `Type` ("the type universe is
@@ -822,7 +822,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1t4vycj/generalization_of
 https://www.reddit.com/r/Compilers/comments/1ujv6kn/algebraic_shape_composition_in_a_tiny_functional/
 (hobby/LLM-assisted project: evidence of interest only)
 
-**Bearing on `fun`.** Both halves are first-class: `Constructor`s build a nominal and live in
+**Bearing on `quill`.** Both halves are first-class: `Constructor`s build a nominal and live in
 the same namespace as everything else (a constructor sharing its type's name shadows that
 type), `Tuple(n, T1, …, Tn)` is the built-in flat product, and a `struct` is the record-shaped
 product. The open design work is representation-adjacent — `enum-captures-from-payload-values`
@@ -870,7 +870,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/59xk4k/ccore_basics_part_
 · Why You Need Subtyping, score 71, 73 comments, 2025-03 (nullable-collapse argument, comment
 evidence) — https://www.reddit.com/r/ProgrammingLanguages/comments/1jk1zmd/why_you_need_subtyping/
 
-**Bearing on `fun`.** No null anywhere; absence is the prelude nominal `Option`, matched like
+**Bearing on `quill`.** No null anywhere; absence is the prelude nominal `Option`, matched like
 any other enum, and `Absurd` covers the never-happens case rather than a null that always can.
 Two live edges: `std-eq-for-list-and-option` is parked on the two-list recursion crash
 (`recursive-match-on-two-lists-cores`), and `port-enum-captures-from-payload-values` is the
@@ -903,7 +903,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/13dya1e/how_do_product_an
 · Record type inference for dummies, score 54, 16 comments, 2026-06 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1udg7pa/record_type_inference_for_dummies/
 
-**Bearing on `fun`.** Decided: a `struct` is a record type and a namespace in one construct;
+**Bearing on `quill`.** Decided: a `struct` is a record type and a namespace in one construct;
 construction checks every required field and rejects unknown ones; field order at construction
 is not significant; a complete record pattern lists every field and a partial one uses trailing
 `_` (`docs/wayfinder/topics/records.md`). The identity twist is recursion: `rec Numbers = struct
@@ -938,7 +938,7 @@ invisible to the reader.
 **Source.** Idea for maps with statically known keys, score 18, 22 comments, 2024-08 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1eo5oo4/idea_for_maps_with_statically_known_keys/
 
-**Bearing on `fun`.** Genuinely new, and cheap enough to be plausible: **record type reflection**
+**Bearing on `quill`.** Genuinely new, and cheap enough to be plausible: **record type reflection**
 is complete (`struct … end` type patterns over constructor fields) and type-case can match on
 nominal heads, so a struct carrying an enum-indexed group could elaborate to ordinary fields
 plus an ordinary match — no new type-system machinery, one new construction form. The FFI
@@ -991,7 +991,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/14czkbu/dependent_types_d
 · Dependent Type Systems, score 61, 24 comments, 2020-11 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/jtwyxu/dependent_type_systems/
 
-**Bearing on `fun`.** This is `fun`'s own position, so the entry is the project's risk
+**Bearing on `quill`.** This is `quill`'s own position, so the entry is the project's risk
 register. The tax is already being paid in tickets: `checker-evaluation-budget` (type-level
 computation runs under one budget shared with the evaluator),
 `type-case-refinement-walks-whole-context` (a refinement case measured at 37.8 s before the fix
@@ -1037,7 +1037,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/13vozxh/what_are_the_adva
 · Ownership vs full immutability, score 72, 49 comments, 2022-05 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/uxtcme/ownership_vs_full_immutability/
 
-**Bearing on `fun`.** Answered by splitting the question in two, which is exactly what the
+**Bearing on `quill`.** Answered by splitting the question in two, which is exactly what the
 rejected merged mutation-effect name was hiding: mutation is an **effect** (`Alloc(h)` / `Read(h)` /
 `Write(h)`, so read-only code earns a weaker row) and reference-ness is a **type** (`Ref(h, A)`
 branded by its heap). Immutability therefore never changes the *data's* type — a value is a
@@ -1076,7 +1076,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/uzq8xw/do_we_even_need_eq
 comments, 2023-11 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/17tw4nc/which_languages_have_equality_hashing_and/
 
-**Bearing on `fun`.** Already has it, by name: `type-specialized-equality.md` — user-level `==`
+**Bearing on `quill`.** Already has it, by name: `type-specialized-equality.md` — user-level `==`
 is `(==) : [A : Eq] -> A -> A -> Bool`, the implementation is a type-head match over `Type`
 with primitive heads `I64`, `Bool`, `Char`, `Unit`, `String`, and nominal/record equality is
 deliberately *not* automatic: an explicit `Eq` impl is required — which is the corpus's
@@ -1117,10 +1117,10 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/vqx19e/modules_overcoming
 integrate "type classes" for language extension, score 72, 39 comments, 2025-08 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1mwj302/how_java_plans_to_integrate_type_classes_for/
 
-**Bearing on `fun`.** Rejected, with the reason recorded: **global coherence is unavailable
+**Bearing on `quill`.** Rejected, with the reason recorded: **global coherence is unavailable
 when modules are values** — an impl inside a module is a value, a module can be built by a
 function and returned, and there is no well-defined moment to register a global impl
-(`docs/wayfinder/topics/impl-visibility.md`, option C). What `fun` chose instead is
+(`docs/wayfinder/topics/impl-visibility.md`, option C). What `quill` chose instead is
 most-precise-impl-wins with lexical nearness never breaking a tie (`traits.md`), impls arriving
 through `open`, and a planned named-impl handle. The residual hazard is named and parked: scoped
 resolution makes ordered/hashed collections unsafe to merge, and `impl-visibility` says that
@@ -1155,8 +1155,8 @@ four for a lazy language. No consensus thread exists in this corpus.
 2022-03 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/tdlff4/infinite_loops_a_sideeffect_or_an_implementation/
 
-**Bearing on `fun`.** Recorded, unambiguously, in `CONTEXT.md`: **"Termination is never checked;
-divergence is not an effect."** What `fun` has instead is the **evaluation budget** — how many
+**Bearing on `quill`.** Recorded, unambiguously, in `CONTEXT.md`: **"Termination is never checked;
+divergence is not an effect."** What `quill` has instead is the **evaluation budget** — how many
 semantic steps the *checker* may spend evaluating while type checking; exceeding it is a
 compile error naming the call; running a program spends none. The retired recursion guard is
 the counter-example: a limit on how many recursive calls the checker would allow was replaced by
@@ -1202,7 +1202,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/146noct/is_the_abstractio
 Germain, score 32, 11 comments, 2023-03 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1279h73/sophie_a_callbyneed_stronginferredtype_language/
 
-**Bearing on `fun`.** Strict, decided: the evaluator never recurses on the native stack per
+**Bearing on `quill`.** Strict, decided: the evaluator never recurses on the native stack per
 object-level call (a term needing sub-evaluation gets a `Kont` frame), and the only
 non-strictness is a checker-side optimisation — a *pure* call is deferred (`VGlued`) inside
 checker requests only, never inside a macro application, because purity is knowable from the
@@ -1237,7 +1237,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/lozq0h/alternative_to_mon
 · Built-in Purity Inference, score 40, 41 comments, 2020-05 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/gb93td/builtin_purity_inference/
 
-**Bearing on `fun`.** Has the full version, decided: a bare arrow *is* pure (`A -> B` is
+**Bearing on `quill`.** Has the full version, decided: a bare arrow *is* pure (`A -> B` is
 `A -> B can {}`), `can _` infers a row, purity is read off the row and never declared, and it
 is load-bearing twice — it lets the checker *evaluate* a call while checking (within the budget)
 and it decides whether a nominal declared in a call is applicative
@@ -1299,8 +1299,8 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1r3fcxw/am_i_the_only_one
 2023-06 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/13xkz1o/what_vale_taught_me_about_linear_types_borrowing/
 
-**Bearing on `fun`.** Genuinely new as a *type-system* idea — no ticket proposes linearity,
-affine types or lifetimes, and the closest thing `fun` has is the heap brand, which is a
+**Bearing on `quill`.** Genuinely new as a *type-system* idea — no ticket proposes linearity,
+affine types or lifetimes, and the closest thing `quill` has is the heap brand, which is a
 different device: `Ref(h, A)` is branded by its heap and `Discharge` drops a heap that cannot
 escape, giving runST-style leak-freedom with no use counts at all. The implementation side of
 ownership (arenas, borrow checking, memory) is `runtime-and-memory.md`, not here.
@@ -1337,9 +1337,9 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/13i4nm0/unifying_uniquene
 comments, 2026-05 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/1tpezv2/a_friendly_tour_of_substructural_uniqueness/
 
-**Bearing on `fun`.** New, and adjacent-but-not-the-same: `fun`'s `Context` *is* an ordered
+**Bearing on `quill`.** New, and adjacent-but-not-the-same: `quill`'s `Context` *is* an ordered
 sequence where position is meaning — but that is a property of the meta-language's context, not
-a typing rule about object-level variables. Nothing in `fun` restricts how or when a term uses
+a typing rule about object-level variables. Nothing in `quill` restricts how or when a term uses
 its variables; adding that would need a new judgement and would collide with the evaluator's
 `Kont`-frame discipline, which is about native-stack safety rather than object-level ordering.
 Treat as unproposed until a ticket wants stack-safety as a *type*.
@@ -1383,10 +1383,10 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/gmqzlp/how_to_evaluate_ty
 · What does it mean to have an "algebraic" type system?, score 98, 64 comments, 2023-01 —
 https://www.reddit.com/r/ProgrammingLanguages/comments/10ewz92/what_does_it_mean_to_have_an_algebraic_type_system/
 
-**Bearing on `fun`.** This is the project's own method, already written down: `docs/STATUS.md`
+**Bearing on `quill`.** This is the project's own method, already written down: `docs/STATUS.md`
 is authoritative over prose, every design decision has a topic doc that states its rule, and the
 fog list is exactly "properties we have not named yet". The two fog items that would answer
-this entry's question for `fun` are **formalized core semantics** (write `Core.term` /
+this entry's question for `quill` are **formalized core semantics** (write `Core.term` /
 `Core.value` / `eval` as a Lean 4 spec — the property becomes checkable) and
 **universe levels** (`Type : Type` is the known property being knowingly traded away).
 
@@ -1408,7 +1408,7 @@ this entry's question for `fun` are **formalized core semantics** (write `Core.t
   working counter-example to a claimed identity, worked in code.
 - **How impractical/inefficient will "predicates as type" be?** (43) — the information-loss
   problem with refinement types stated better than most papers' intros.
-- **Dependent types and usability?** (64) — the question `fun` exists inside; no answer
+- **Dependent types and usability?** (64) — the question `quill` exists inside; no answer
   consensus, which is the finding.
 - **Strict and lazy without littering lazy everywhere** (16, but the body is the point) — a
   real attempt at targeted laziness, with an n-queens example and a self-correction.
@@ -1436,7 +1436,7 @@ are cited throughout below.
 claims on one side, four large production languages plus Java adopting it on the other. (2)
 Whether gradual typing should be sound or cheap — a paper's "not tolerable" overhead against
 TypeScript's deployment. (3) Global coherence vs scoped instances — settled per language, never
-settled between them, and `fun` has already ruled on the grounds that its modules are values.
+settled between them, and `quill` has already ruled on the grounds that its modules are values.
 (4) Divergence's meaning — four shipped answers, no thread reconciling them. (5) Null: the
 corpus keeps re-asking the same question (three separate threads, 2016, 2023, 2024) without
 converging.

@@ -1,6 +1,6 @@
 ---
 title: Methods follow the arrow rule — pure unless they say `can`
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -19,7 +19,7 @@ A method's type carries no effect row, so what a method body performs is dropped
 (noted by the one-pass-effects run with a `ponytail:` comment). A method that
 performs passes the checker and fails at run time.
 
-```fun
+```quill
 effect Log = sig { write : String -> Unit };
 Counter = struct {
   n : I64;
@@ -33,7 +33,7 @@ Counter = struct {
 A method is a function stored in a struct, so it follows the bare-arrow rule
 ([bare-arrow-is-pure](bare-arrow-is-pure.md)): pure unless it declares a row.
 
-```fun
+```quill
 pub method bump() can {Log} { perform Log.write("bump"); self.n + 1 }   // ok
 pub method bump() { perform Log.write("bump"); … }                       // error: Log not declared
 pub method any() can _ { … }                                             // row inferred

@@ -59,20 +59,20 @@ elaborates, and `N.T.T` / `N.T.U` reach the two constructors).
 
 ## Implementation (C#, landed 2026-09-21)
 
-- `dotnet/src/Fun.Compiler/Elaborator.Export.cs`, `ExportClashes.Check` — the `_seen`
+- `dotnet/src/Quill.Compiler/Elaborator.Export.cs`, `ExportClashes.Check` — the `_seen`
   trigger now applies to every binding and reports
   `duplicate member: \`x\` is already public` when the binding is not an export; the
   `_exported` trigger and the `source` carve-out are untouched, so
   `export clash: \`x\` is already a member` keeps meaning an export collided with the
   interface. The class doc comment now states the rule.
-- `dotnet/src/Fun.Compiler/Elaborator.Enum.cs`, `InferEnum` — rejects a repeated
+- `dotnet/src/Quill.Compiler/Elaborator.Enum.cs`, `InferEnum` — rejects a repeated
   constructor name. `Elaborator.RejectDuplicates` gained an optional subject
   (`duplicate <subject> \`x\``), so the enum says *constructor* while its five existing
   call sites still say *field*.
 - Units need nothing: a unit parses to `Syntax.Module` (`enforest.ml:1581`) and goes through
   `InferModuleBindings` (`Elaborator.cs`), the same fold. Struct literals are a separate fold
   and were deliberately left alone.
-- xUnit: `dotnet/test/Fun.Tests/MemberTests.cs` — four tests (repeated public member,
+- xUnit: `dotnet/test/Quill.Tests/MemberTests.cs` — four tests (repeated public member,
   repeated constructor, private shadow allowed, an open's name shadowed by a `pub`).
 
 ## Conformance (as landed)

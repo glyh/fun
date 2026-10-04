@@ -1,6 +1,6 @@
 ---
 title: Expansion budget errors reach the user raw, and body errors lost the operator span
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

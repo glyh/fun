@@ -17,7 +17,7 @@ blocked_by:
 > **The feature is already there.** With the program written in the language's own syntax — which
 > the probes on this ticket were not — a nested field pattern simply works:
 >
-> ```fun
+> ```quill
 > { R = struct { f : I64; g : Option(I64) };
 >   f = fn(x : Option(I64), y : match (R{f = 1; g = x}) { R{f = 1; g = Some(z)} => I64, _ => Char }) { y };
 >   f(Some(5), 5) }
@@ -31,7 +31,7 @@ blocked_by:
 > `R = struct { f : I64, g : Option(I64) }` — with a **comma** — and the port's reader loops
 > forever on a comma in a struct field list:
 >
-> ```fun
+> ```quill
 > { R = struct { f : I64, g : I64 }; 1 }      -- one field, or `;`, answers VALUE 1
 > ```
 >

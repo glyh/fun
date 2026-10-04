@@ -1,6 +1,6 @@
 ---
 title: A quoted constructor value is re-found by spelling
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

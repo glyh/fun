@@ -18,13 +18,13 @@ and it is *not* the same thing as a green conformance run. There are two deltas:
 - **The invisible delta** — the paths the port refuses with
   `NotImplementedException("not ported yet: …")`: **60 sites in 25 files** under
   `dotnet/src`, plus **15 `ponytail:` stopgaps**. The C# runner
-  (`dotnet/test/Fun.Conformance/Program.cs`) counts a `NotImplementedException` as a
+  (`dotnet/test/Quill.Conformance/Program.cs`) counts a `NotImplementedException` as a
   failure *only when a case reaches it*, so a feature no shared case exercises is a
   silent hole. This is the list that actually answers the question.
 
 ## The instrument: one shared case, both runners
 
-For any suspected gap, write `test/conformance/cases/<area>/<name>.fun` + `.expect`
+For any suspected gap, write `test/conformance/cases/<area>/<name>.qll` + `.expect`
 and run both runners. Three verdicts, all useful:
 
 1. **OCaml handles it, C# refuses it** — a real gap. Port it, keep the case.
@@ -165,7 +165,7 @@ yet, so it belongs to step 2.
 
 **Also part of 3:** internals parity. The conformance suite cannot see shapes, the
 unifier, the machine or budget accounting, so C# coverage for those rests on
-`dotnet/test/Fun.Tests` mirroring `test/syntax/*.ml` and `test/semantic/test_elaborate.ml`.
+`dotnet/test/Quill.Tests` mirroring `test/syntax/*.ml` and `test/semantic/test_elaborate.ml`.
 Check the mirror is complete (there is no `BudgetTests.cs`). **Audited 2026-09-20 and
 ruled on: source → result parity plus the budget cases; the shape suites are not
 mirrored.**
@@ -197,7 +197,7 @@ integrator records.
 ## The measured delta (2026-09-25)
 
 `scripts/differential.sh` (with `bin/differential.ml` and the C# runner's `--file` mode) runs
-every `.fun` program in the repo through both runners and compares outcomes by **class**
+every `.qll` program in the repo through both runners and compares outcomes by **class**
 (`VALUE` / `OK` / `ELAB` / `EVAL` / `HANG`), adjudicating a disagreement against the case's
 `.expect`. **Measured on the tree at `ca90528`, 2026-09-25** — the first run with all three audited gaps
 closed:
@@ -206,7 +206,7 @@ closed:
 |---|---|
 | enumerated | 817 files |
 | ran | 763 |
-| skipped — `<name>.unit-<unit>.fun`, each printed with its reason | 54 |
+| skipped — `<name>.unit-<unit>.qll`, each printed with its reason | 54 |
 | **agreed** | **732** |
 | **port fails, prototype answers** | **0** |
 | prototype fails, port answers | 31 |
@@ -261,7 +261,7 @@ reads. Measure a gap in the runners before spending a fork slot on it.
 > and the "landed this session" stuck match. The prototype was then deleted (`port-fails: 0`) and
 > the port lifted out of `dotnet/` on 2026-09-26. **The port's parity frontier is empty** — what
 > remains under this umbrella is the follow-up list, which lives on
-> [the map's Frontier (2026-09-26)](../fun-design-map.md#frontier-2026-09-26) and in
+> [the map's Frontier (2026-09-26)](../quill-design-map.md#frontier-2026-09-26) and in
 > [`docs/STATUS.md`](../../STATUS.md). Read the section below as the record of the last mile, not
 > as a to-do list: its "frontier now" heading is the state of one afternoon.
 
@@ -276,7 +276,7 @@ mechanism* — not by the ticket's prose, which is the thing that was in doubt:
 | ticket | the mechanism that settles it |
 |---|---|
 | [port-procedural-macros](port-procedural-macros.md) | `MacroRuntime.cs:57` `Advance(Binding)` called per expanded binding by `Expander.cs:244` → `Elaborator.AdvanceUnit` — the interleaving that ticket listed as "not done" |
-| [port-syntax-roles](port-syntax-roles.md) | `RoleException` (`BinderTable.cs:28`), operators through `stage2.fun`'s `order additive`, roles through imports, the Driver's blanket rule gone |
+| [port-syntax-roles](port-syntax-roles.md) | `RoleException` (`BinderTable.cs:28`), operators through `stage2.qll`'s `order additive`, roles through imports, the Driver's blanket rule gone |
 | [port-effects](port-effects.md) | `Nbe.Effects.cs`, `Term.Tunnel` (`Elaborator.Effects.cs:297`), the optional `Pi.Row` its sequencing guard asked for |
 | [port-generative-former-identity-residue](port-generative-former-identity-residue.md) | `1f70e82` + the case `values/nominal-generative-former-type-case-separates` |
 

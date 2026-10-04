@@ -1,6 +1,6 @@
 ---
 title: The coverage gaps the mutation sweep found
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -142,7 +142,7 @@ Rows **not** written, and why:
 1. **`ref-tuple-negative` is unflippable at both of its candidate guards.** (a) `Elaborator.Patterns.cs:475` is unreachable from written source — a negative literal in a pattern is refused earlier by the enforester (`unsupported pattern`; in expressions `unsupported prefix operator: -`), so only a macro-constructed pattern could reach it — and it is **masked by sibling `:466`**, which fires for every negative count (`patterns.Count >= 0 != n`). (b) The term-level twin `Primitives.cs:165` (identical message) is reachable via a computed negative (`Tuple(0 - 5)`), but disabling it either leaves another `error` (`type mismatch: cannot unify VPi with VU` — the mutant type is a shallow `VPi`) or **StackOverflows the whole process**: the mutant value is the infinitely recursive `Type -> tuple_arity(n-1) -> …`, which every consumer either re-refuses or force-walks to death (probes: `{ y = Tuple(0 - 5); 1 }`, `{ g = fn(x) { x }; g(Tuple(0 - 5)); 1 }`, runtime-computed variants — all `Stack overflow.`). A case would "flip" only by killing the suite. No case added.
 2. **`ref-nbe-continuation-used`: `Nbe.cs:586` (`cannot quote continuation`) is unreachable by any program** — a finding about `src/`, matching its own comment ("no probe read one back"). The continuation is bound anonymously (`Elaborator.Effects.cs`, `argCtx.BindAnonymous(contType)`); only `resume` reaches it, so no program can name it into a read-back value: a lambda `fn(x) { resume(x) }` reads back by *applying* the closure (the cont runs, never quotes), and returning it needs an infinite answer type (probe: `rec B = enum { Box(I64 -> B), Leaf(I64) }; … k => B.Box(k)` — `k` is the operation's *argument* binder, not the continuation). The same mechanism's reachable guard — the one-shot refusal `Nbe.Effects.cs:123` (`continuation already used`, with `:124` `Used = true`) — flips on `{ effect Ask = sig { ask : I64 -> I64 }; match (perform Ask.ask(1)) { n => n, effect Ask.ask k => { resume(1); resume(2) } } }` (`error` observed as `EVAL continuation already used`). **Its case is not yet written/proven at fork cutoff — the one thing to do next.**
 3. **`syntaxmap-operator-scope` (`Syntax.Map.cs:168`, `Operator = m.Id(u.Operator)`) not reached at cutoff.** Only already-enforested `OperatorUse` syntax observes this line (rule replacements, quote templates, macro-emitted binding chains); `ExpandBindings` maps raw items by *token* through `MapToken`, a different line, which is why block-level role shadowing does not see it. Planned probe: a `macro … : List(Decl) { quote { infix (+++) ($a, $b) { … }; … } }` emitting an operator-macro declaration and a use of it in one splice.
-4. **`expander-roles-attaches` (`Expander.Roles.cs:46`) — two readings, neither confirmed at cutoff.** (a) Disabling the exemption itself trips the *prelude*: `std/lib.fun:41` attaches fixity-only roles (`==` …) to values, so **every** program dies with `` `==` is both a syntactic role and a value binder where both are visible `` — the sweep's zero-catch claim is impossible for this reading, so the sweep's mutation cannot have been it. (b) Dropping the `attaches &&` conjunct (so the refusal never fires over a value) is the reading a case could pin specifically; `elaborate/role-conflicts-with-value-binder.fun` was located right at cutoff and likely already pins that refusal — verify it under reading (b) before writing anything.
+4. **`expander-roles-attaches` (`Expander.Roles.cs:46`) — two readings, neither confirmed at cutoff.** (a) Disabling the exemption itself trips the *prelude*: `std/lib.qll:41` attaches fixity-only roles (`==` …) to values, so **every** program dies with `` `==` is both a syntactic role and a value binder where both are visible `` — the sweep's zero-catch claim is impossible for this reading, so the sweep's mutation cannot have been it. (b) Dropping the `attaches &&` conjunct (so the refusal never fires over a value) is the reading a case could pin specifically; `elaborate/role-conflicts-with-value-binder.qll` was located right at cutoff and likely already pins that refusal — verify it under reading (b) before writing anything.
 
 Counts: suite `954 cases, 0 failed` measured before, `958 cases, 0 failed` after the four cases (clean-tree run; one intermediate run was against a stale mutated DLL and is discarded); xUnit not re-run at fork cutoff.
 
@@ -150,10 +150,10 @@ Counts: suite `954 cases, 0 failed` measured before, `958 cases, 0 failed` after
 
 Re-measured on `main` rather than taken from the table above:
 
-- baseline `958 cases, 0 failed` exit 0; `dotnet test test/Fun.Tests` → **209/209**; after both
+- baseline `958 cases, 0 failed` exit 0; `dotnet test test/Quill.Tests` → **209/209**; after both
   mutations were reverted, the same `958 cases, 0 failed`, tree clean.
 - `Elaborator.Export.cs:24`, `members.Last` → `members.First`: build exit 0 →
-  `values/export-last-member.fun` prints `ELAB applying non-function` → **`958 cases, 1 failed`**,
+  `values/export-last-member.qll` prints `ELAB applying non-function` → **`958 cases, 1 failed`**,
   exit 1, and that case **alone**.
 - `Elaborator.Patterns.cs:466`, the arity check neutralised by appending `&& false`: build exit 0,
   zero `error CS` → `ref-tuple-arity` prints **`VALUE 0`** → **`958 cases, 1 failed`**, that case
@@ -205,12 +205,12 @@ Row by row:
    defined under `+++ = -`, used under `+++ = +`) does **not** flip under the mutation at all (stays
    `VALUE 0` both ways) — that reacher of line 168 is unobservable through a value.
 3. **`expander-roles-attaches` — the twin case does not pin the reading; a new case does.**
-   `elaborate/role-conflicts-with-value-binder.fun` binds `syntax answer` *before* `answer = 5`, so its
+   `elaborate/role-conflicts-with-value-binder.qll` binds `syntax answer` *before* `answer = 5`, so its
    refusal fires on the value binding over an existing role, where `attaches` is `false` either way
    (`Expander.cs:39`) — dropping the `attaches &&` conjunct leaves it `error` (measured). What the
    conjunct gates is the other order: a non-attaching role bound over an existing visible *value*
    (`BindRoleAt` → `role.Attaches = false` for `syntax`). The new case is the twin with the two decls
-   swapped. Reading (a) (disabling the exemption itself, tripping the prelude at `std/lib.fun:41`) stands
+   swapped. Reading (a) (disabling the exemption itself, tripping the prelude at `std/lib.qll:41`) stands
    as the previous fork measured it, not re-run.
 4. **`ref-tuple-negative` — settled unflippable, no probe spent.** Per the previous fork:
    `Elaborator.Patterns.cs:475` is unreachable from written source and masked by sibling `:466`, and
@@ -233,6 +233,6 @@ Re-measured on `main`, each ablation with its build's exit code printed *before*
 - `Syntax.Map.cs:168`, `Operator = m.Id(u.Operator)` → `u.Operator`: build exit 0 →
   `syntaxmap-operator-scope` gives `` ELAB `+++` is an operator macro with no macro of its name ``.
 - `Expander.Roles.cs:46`, the `attaches &&` conjunct dropped: build exit 0 → the **new** case gives
-  **`VALUE 42`** while the pre-existing `role-conflicts-with-value-binder.fun` **keeps refusing** →
+  **`VALUE 42`** while the pre-existing `role-conflicts-with-value-binder.qll` **keeps refusing** →
   `961 cases, 1 failed`, that case alone. That pair is the evidence the new case is not a duplicate
   of the one already in the suite, which was the second pass's headline correction.

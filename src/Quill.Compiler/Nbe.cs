@@ -1,0 +1,637 @@
+using System.Collections.Immutable;
+using Quill.Kernel;
+
+namespace Quill.Compiler;
+
+/// <summary>
+/// Normalisation by evaluation. Evaluation is a loop over a heap-allocated
+/// stack of frames, not native recursion per object-level call: a program's
+/// call width is bounded by memory, never by the CLR's 1 MB stack, and a
+/// captured continuation will be a slice of that stack.
+/// </summary>
+public static partial class Nbe
+{
+    // ---- the machine ------------------------------------------------------
+
+    /// <summary>
+    /// A continuation frame: what the machine does with the value it is about to
+    /// produce. Distinct from <see cref="Frame"/>, an elimination stuck on a neutral.
+    /// </summary>
+    private abstract partial record Kont
+    {
+        /// <summary>The callee is evaluated; evaluate the argument next.</summary>
+        public sealed record EvalArg(Environment Environment, Term Arg) : Kont;
+
+        /// <summary>The argument is evaluated; apply the callee to it.</summary>
+        public sealed record ApplyTo(Value Fn) : Kont;
+
+        /// <summary>The definition is evaluated; push it and run the body.</summary>
+        public sealed record LetBody(Environment Environment, Term Body) : Kont;
+
+        /// <summary>The domain is evaluated; close the codomain over the environment.</summary>
+        public sealed record PiCodomain(Explicitness Explicitness, Environment Environment, Term Codomain) : Kont
+        {
+            public RowTerm Row { get; init; } = RowTerm.Pure;
+        }
+
+        /// <summary>One tuple element is evaluated; carry on with the rest.</summary>
+        public sealed record ProdItems(Environment Environment, EquatableArray<Term> Rest, EquatableArray<Value> Done, bool IsType)
+            : Kont;
+
+        /// <summary>The tuple is evaluated; take its nth element.</summary>
+        public sealed record ProjOf(int Index) : Kont;
+
+        /// <summary>The container is evaluated; take its member.</summary>
+        public sealed record DotOf(string Name) : Kont;
+
+        /// <summary>The module is evaluated; push its members and run the body.</summary>
+        public sealed record OpenBody(Environment Env, EquatableArray<OpenMember> Members, Term Body) : Kont;
+
+        /// <summary>
+        /// A slot of a module's binding is evaluated: push it, then carry on with
+        /// the binding's remaining slots and the module's remaining bindings.
+        /// </summary>
+        public sealed record ModuleSlot(
+            Environment Env, Slot Slot, EquatableArray<Slot> RestSlots,
+            EquatableArray<BindingTerm> RestBindings, EquatableArray<ModuleEntry> Entries) : Kont;
+
+        /// <summary>A module whose bindings are all pushed: build its value.</summary>
+        public sealed record ModuleDone(EquatableArray<ModuleEntry> Entries) : Kont;
+
+        /// <summary>A module's open is evaluated: push its members, then carry on.</summary>
+        public sealed record ModuleOpen(
+            Environment Env, EquatableArray<OpenMember> Members,
+            EquatableArray<BindingTerm> RestBindings, EquatableArray<ModuleEntry> Entries) : Kont;
+    }
+
+    /// <summary>
+    /// Evaluates <paramref name="term"/>: one request under the evaluation budget
+    /// (a nested one spends from the request it is part of).
+    /// </summary>
+    public static Value Eval(MetaContext mc, Environment env, Term term) =>
+        mc.Budget.Request("an evaluation", () => Machine(mc, env, term, new Stack<Kont>()));
+
+    /// <param name="stack">The frames the machine still owes work to, innermost last.</param>
+    private static Value Machine(MetaContext mc, Environment env, Term term, Stack<Kont> stack)
+    {
+
+        while (true)
+        {
+            // Reduce the term to a value, pushing a frame for anything that
+            // needs a sub-evaluation first.
+            Value value;
+            while (true)
+            {
+                switch (term)
+                {
+                    case Term.Var v: value = env[v.Index]; break;
+                    case Term.Lam l: value = new Value.VLam(new Closure(env, l.Body)); break;
+                    case Term.Fix fix: value = new Value.VFix(fix.Members, env, fix.Index); break;
+                    case Term.U: value = Value.VU.Instance; break;
+                    case Term.Atom a: value = new Value.VAtom(a.Value); break;
+                    case Term.Imported i: value = i.Value; break;
+                    case Term.PatternSynonym s: value = s.Synonym; break;
+                    case Term.AtomTy a: value = new Value.VAtomTy(a.Ty); break;
+                    case Term.Prim p:
+                        value = new Value.VNeutral(Value.VU.Instance, new Head.HPrim(p.Name), []);
+                        break;
+                    case Term.Meta m: value = Meta(mc, m.Id); break;
+                    case Term.InsertedMeta m: value = InsertedMeta(mc, env, m.Id, m.EntryKinds); break;
+
+                    case Term.Ap ap:
+                        stack.Push(new Kont.EvalArg(env, ap.Arg));
+                        term = ap.Fn;
+                        continue;
+
+                    case Term.Let let:
+                        stack.Push(new Kont.LetBody(env, let.Body));
+                        term = let.Def;
+                        continue;
+
+                    case Term.Pi pi:
+                        stack.Push(new Kont.PiCodomain(pi.Explicitness, env, pi.Codomain) { Row = pi.Row });
+                        term = pi.Domain;
+                        continue;
+
+                    case Term.Proj proj:
+                        stack.Push(new Kont.ProjOf(proj.Index));
+                        term = proj.Of;
+                        continue;
+
+                    case Term.Dot dot:
+                        stack.Push(new Kont.DotOf(dot.Name));
+                        term = dot.Of;
+                        continue;
+
+                    case Term.Open open:
+                        stack.Push(new Kont.OpenBody(env, open.Members, open.Body));
+                        term = open.Of;
+                        continue;
+
+                    case Term.Struct st:
+                    {
+                        // A finished struct leaves its StructOf frame for the continuation loop.
+                        var step = StartStruct(stack, env, st);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); continue; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        break;
+                    }
+
+                    case Term.RecordConstruct record:
+                        (env, term) = StartRecord(stack, env, record) is { Env: { } recordEnv, Term: { } recordTerm } ? (recordEnv, recordTerm) : throw new InvalidOperationException("a record starts with its struct");
+                        continue;
+
+                    case Term.Sig sig:
+                        value = new Value.VSig(new Closure(env, sig.Body));
+                        break;
+
+                    case Term.Module module:
+                    {
+                        if (module.Signature) stack.Push(new Kont.SignatureOf());
+                        // The next piece of work is the first slot of the first
+                        // binding with any; a module of none is done at once.
+                        if (StartBindings(stack, env, module.Bindings, []) is { } next)
+                        {
+                            (env, term) = next;
+                            continue;
+                        }
+                        value = FinishModule(stack);
+                        break;
+                    }
+
+                    case Term.EffectRowTy or Term.EffectRowLit or Term.Effect or Term.EffectDecl or Term.Perform or Term.Tunnel
+                        or Term.Match { EffectBranches.IsEmpty: false }:
+                        if (StartEffects(mc, stack, env, term, out var effectValue) is { } effectStep) { (env, term) = effectStep; continue; }
+                        value = effectValue!;
+                        break;
+
+                    case Term.Match match: stack.Push(new Kont.MatchOn(env, match)); term = match.Scrutinee; continue;
+                    case Term.RefTy or Term.RefNew or Term.RefGet or Term.RefSet: term = StartRef(stack, term); continue;
+
+                    case Term.Nominal { Captures.IsEmpty: true } n: value = new Value.VNominal(n.Decl, []); break;
+                    case Term.Nominal n: stack.Push(new Kont.NominalOf(n.Decl)); term = new Term.Prod(n.Captures); continue;
+                    case Term.Quote { Holes.IsEmpty: true } q: value = q.Template; break;
+                    case Term.Quote q:
+                        stack.Push(new Kont.QuoteFill(q.Template, [.. q.Holes.Select(h => h.Hole)]));
+                        term = new Term.Prod([.. q.Holes.Select(h => h.Value)]);
+                        continue;
+                    case Term.RecursiveOccurrence o: stack.Push(new Kont.RecursiveOccurrenceOf(o.Decl, o.Captures.Length)); term = new Term.Prod([.. o.Captures, .. o.Args]); continue;
+                    case Term.Con con: value = Construct(env, con); break;
+                    case Term.TraitRef t: value = new Value.VTrait(t.Decl); break;
+                    case Term.TraitDictTy dict: term = StartTraitDict(stack, dict); continue;
+
+                    case Term.Prod { Items.IsEmpty: true }: value = new Value.VProd([]); break;
+                    case Term.ProdTy { Items.IsEmpty: true }: value = new Value.VProdTy([]); break;
+
+                    case Term.Prod prod:
+                        stack.Push(new Kont.ProdItems(env, prod.Items.RemoveAt(0), [], IsType: false));
+                        term = prod.Items[0];
+                        continue;
+
+                    case Term.ProdTy prod:
+                        stack.Push(new Kont.ProdItems(env, prod.Items.RemoveAt(0), [], IsType: true));
+                        term = prod.Items[0];
+                        continue;
+
+                    default:
+                        throw new InvalidOperationException($"unhandled term {term.GetType().Name}");
+                }
+                break;
+            }
+
+            // Hand the value to the frame waiting for it. A frame that resumes
+            // a term sets `term` and goes round again rather than recursing.
+            while (true)
+            {
+                if (stack.Count == 0) return value;
+                if (value is Value.VGlued glued && NeedsShape(stack.Peek()))
+                {
+                    if (glued.Unfolded.IsValueCreated)
+                    {
+                        value = glued.Unfolded.Value;
+                        continue;
+                    }
+                    (env, term) = Unfold(mc, stack, glued.Fix, glued.Args);
+                    goto evaluate;
+                }
+                switch (stack.Pop())
+                {
+                    case Kont.EvalArg f:
+                        stack.Push(new Kont.ApplyTo(value));
+                        (env, term) = (f.Environment, f.Arg);
+                        goto evaluate;
+
+                    // Applying a closure or a fixpoint continues the loop in its
+                    // body: this is where native recursion per call would be.
+                    case Kont.ApplyTo f:
+                    {
+                        if (Enter(mc, stack, f.Fn, value, charged: false, out var applied) is { } next)
+                        {
+                            (env, term) = next;
+                            goto evaluate;
+                        }
+                        value = applied ?? throw new InvalidOperationException("an application gave neither a term nor a value");
+                        continue;
+                    }
+
+                    case Kont.ApplyArg f:
+                    {
+                        if (Enter(mc, stack, value, f.Arg, f.Charged, out var applied) is { } next)
+                        {
+                            (env, term) = next;
+                            goto evaluate;
+                        }
+                        value = applied ?? throw new InvalidOperationException("an application gave neither a term nor a value");
+                        continue;
+                    }
+
+                    case Kont.LetBody f:
+                        (env, term) = (f.Environment.Push(value), f.Body);
+                        goto evaluate;
+
+                    case Kont.PiCodomain f:
+                        value = new Value.VPi(f.Explicitness, value, new Closure(f.Environment, f.Codomain))
+                        {
+                            Row = f.Row.IsPure ? RowClosure.Pure : new RowClosure(f.Environment, f.Row),
+                        };
+                        continue;
+
+                    case Kont.PerformOn f:
+                        stack.Push(new Kont.PerformArg(value, f.Op));
+                        (env, term) = (f.Env, f.Arg);
+                        goto evaluate;
+                    case Kont.PerformArg f:
+                        (env, term) = Raise(mc, stack, f.Instance, f.Op, value);
+                        goto evaluate;
+                    case Kont.TunnelFrame:
+                        continue;
+                    case Kont.Handle { InBody: false } f:
+                        stack.Push(f with { InBody = true });
+                        switch (SelectArm(mc, f.Env, value, f.Match))
+                        {
+                            case MatchStep.Arm arm:
+                                (env, term) = (arm.Env, arm.Body);
+                                goto evaluate;
+                            case MatchStep.Stuck stuck:
+                                value = StuckNeutral(stuck.Value, new Frame.FMatch(f.Env, f.Match, Force(mc, value)));
+                                continue;
+                        }
+                        break;
+                    case Kont.Handle:
+                        continue;
+
+                    case Kont.ProjOf f:
+                        value = Project(value, f.Index);
+                        continue;
+
+                    case Kont.DotOf f:
+                    {
+                        // [v.m] on a record with no field [m]: a method of its
+                        // type, applied to it. The struct's entry holds the method
+                        // value (a function of self), so the call is an application.
+                        if (value is Value.VRecord record && record.Fields.All(x => x.Name != f.Name))
+                        {
+                            var method = DotValue(Unfold(mc, record.Type), f.Name);
+                            if (Enter(mc, stack, method, value, charged: false, out var applied) is { } next2)
+                            {
+                                (env, term) = next2;
+                                goto evaluate;
+                            }
+                            value = applied ?? throw new InvalidOperationException("a method call gave neither a term nor a value");
+                            continue;
+                        }
+                        value = DotValue(value, f.Name);
+                        continue;
+                    }
+
+                    case Kont.StructOf f:
+                        value = AsStruct(f, value);
+                        continue;
+
+                    case Kont.SignatureOf:
+                        value = AsSignature(value);
+                        continue;
+
+                    case Kont.StructField f:
+                    {
+                        var step = ResumeStructField(stack, f, value);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); goto evaluate; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        continue;
+                    }
+
+                    case Kont.RecordType f:
+                    {
+                        var step = ResumeRecord(stack, f, value);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); goto evaluate; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        continue;
+                    }
+
+                    case Kont.RecordField f:
+                    {
+                        var step = ResumeRecordField(stack, f, value);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); goto evaluate; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        continue;
+                    }
+
+                    case Kont.OpenBody f:
+                        (env, term) = (PushOpenMembers(f.Env, value, f.Members), f.Body);
+                        goto evaluate;
+
+                    case Kont.ModuleSlot f:
+                    {
+                        var pushed = f.Env.Push(value);
+                        var entries = f.Slot.ImplType is { } implType
+                            ? f.Entries.Add(new ModuleEntry.Impl(f.Slot.Name, f.Slot.Kind, implType, value, f.Slot.Vars, f.Slot.Bounds))
+                            : f.Slot.Name is { } name
+                            ? f.Entries.Add(new ModuleEntry.Field(name, f.Slot.Kind, value))
+                            : f.Entries;
+                        if (!f.RestSlots.IsEmpty)
+                        {
+                            stack.Push(f with { Env = pushed, Slot = f.RestSlots[0], RestSlots = f.RestSlots.RemoveAt(0), Entries = entries });
+                            (env, term) = (pushed, Def(f.RestSlots[0]));
+                            goto evaluate;
+                        }
+                        if (StartBindings(stack, pushed, f.RestBindings, entries) is { } next)
+                        {
+                            (env, term) = next;
+                            goto evaluate;
+                        }
+                        value = FinishModule(stack);
+                        continue;
+                    }
+
+                    case Kont.MatchOn f:
+                        switch (SelectArm(mc, f.Env, value, f.Match))
+                        {
+                            case MatchStep.Arm arm:
+                                (env, term) = (arm.Env, arm.Body);
+                                goto evaluate;
+                            case MatchStep.Stuck stuck:
+                                value = StuckNeutral(stuck.Value, new Frame.FMatch(f.Env, f.Match, Force(mc, value)));
+                                continue;
+                        }
+                        break;
+                    case Kont.NominalOf f: value = new Value.VNominal(f.Decl, ((Value.VProd)value).Items); continue;
+                    case Kont.QuoteFill f: value = FillQuote(f, value); continue;
+                    case Kont.TraitDictOf f: value = TraitDict(f, value); continue;
+                    case Kont.RefKont f: value = FinishRef(f, value); continue;
+                    case Kont.RecursiveOccurrenceOf f: value = RecursiveOccurrence(f, (Value.VProd)value); continue;
+
+                    case Kont.ModuleOpen f:
+                    {
+                        var pushed = PushOpenMembers(f.Env, value, f.Members);
+                        if (StartBindings(stack, pushed, f.RestBindings, f.Entries) is { } next)
+                        {
+                            (env, term) = next;
+                            goto evaluate;
+                        }
+                        value = FinishModule(stack);
+                        continue;
+                    }
+
+
+                    case Kont.ProdItems f:
+                    {
+                        var done = f.Done.Add(value);
+                        if (f.Rest.IsEmpty)
+                        {
+                            value = f.IsType ? new Value.VProdTy(done) : new Value.VProd(done);
+                            continue;
+                        }
+                        stack.Push(f with { Rest = f.Rest.RemoveAt(0), Done = done });
+                        (env, term) = (f.Environment, f.Rest[0]);
+                        goto evaluate;
+                    }
+                }
+            }
+
+        evaluate: ;
+        }
+    }
+
+    /// <summary>
+    /// Pushes the frame for a module's next binding and returns the term to
+    /// evaluate for it, or pushes the finished module and returns null. A binding
+    /// pushes exactly its slots (I2); an open pushes its members.
+    /// </summary>
+    private static (Environment, Term)? StartBindings(
+        Stack<Kont> stack, Environment env, EquatableArray<BindingTerm> bindings, EquatableArray<ModuleEntry> entries)
+    {
+        if (bindings.IsEmpty)
+        {
+            stack.Push(new Kont.ModuleDone(entries));
+            return null;
+        }
+        var binding = bindings[0];
+        var rest = bindings.RemoveAt(0);
+        switch (binding)
+        {
+            case BindingTerm.Open open:
+                stack.Push(new Kont.ModuleOpen(env, open.Members, rest, entries));
+                return (env, open.Of);
+            default:
+                var slots = binding.Slots() ?? throw new InvalidOperationException("a binding with no slot list");
+                if (slots.IsEmpty) return StartBindings(stack, env, rest, entries);
+                stack.Push(new Kont.ModuleSlot(env, slots[0], slots.RemoveAt(0), rest, entries));
+                return (env, Def(slots[0]));
+        }
+    }
+
+    /// <summary>Pops the finished module <see cref="StartBindings"/> left on the stack.</summary>
+    private static Value FinishModule(Stack<Kont> stack) =>
+        stack.Pop() is Kont.ModuleDone done
+            ? new Value.VModule(done.Entries, Partial: false)
+            : throw new InvalidOperationException("a module finished without its frame");
+
+    private static Term Def(Slot slot) => slot.Source switch
+    {
+        SlotSource.Def d => d.Term,
+        _ => throw new InvalidOperationException($"unhandled slot source {slot.Source.GetType().Name}"),
+    };
+
+    /// <summary>
+    /// A container's member by label: the last entry of that name (I3). Stuck on
+    /// a neutral container.
+    /// </summary>
+    public static Value DotValue(Value of, string name) => of switch
+    {
+        Value.VNominal n => ConstructorValue(n, name),
+        Value.VModule m => VisibleMember(m.Entries, name) ?? throw new FunException($"no member `{name}`"),
+        Value.VStruct st => VisibleMember(st.Entries, name) ?? throw new FunException($"no member `{name}`"),
+        Value.VRecord r => r.Fields.FirstOrDefault(f => f.Name == name) is { Value: { } field } ? field : throw new FunException($"no field `{name}`"),
+        Value.VNeutral n => n with { Ty = Value.VU.Instance, Frames = n.Frames.Add(new Frame.FDot(name)) },
+        Value.VMeta f => new Value.VNeutral(Value.VU.Instance, new Head.HMeta(f.Id), Spine(f.Spine).Add(new Frame.FDot(name))),
+        Value.VVar r => new Value.VNeutral(Value.VU.Instance, new Head.HVar(r.Level), Spine(r.Spine).Add(new Frame.FDot(name))),
+        _ => throw new FunException($"member access `.{name}` on a non-module"),
+    };
+
+    /// <summary>Pushes each opened member, in order, projected from the module.</summary>
+    public static Environment PushOpenMembers(Environment env, Value module, EquatableArray<OpenMember> members) =>
+        members.Aggregate(env, (acc, member) => member switch
+        {
+            OpenMember.Field f => acc.Push(DotValue(module, f.Name)),
+            OpenMember.Constructor c => acc.Push(OpenedConstructor(module, c)),
+            OpenMember.Impl i => acc.Push(OpenedImpl(module, i)),
+            _ => throw new InvalidOperationException($"unhandled open member {member.GetType().Name}"),
+        });
+
+    /// <summary>Applies <paramref name="fn"/> to <paramref name="arg"/>.</summary>
+    // Through the machine, so a call is charged and a fixpoint unfolds exactly as in a program.
+    public static Value Apply(MetaContext mc, Value fn, Value arg) =>
+        Eval(mc, Environment.Empty.Push(fn).Push(arg), new Term.Ap(new Term.Var(1), Explicitness.Explicit, new Term.Var(0)));
+
+    /// <summary>Application to something that is not a closure: the result is stuck.</summary>
+    private static Value ApplyStuck(MetaContext mc, Value fn, Value arg) => Force(mc, fn) switch
+    {
+        Value.VLam or Value.VFix => Apply(mc, Force(mc, fn), arg),
+        Value.VNeutral n => ReduceNeutral(mc, n with { Ty = ApplyTy(mc, n.Ty, arg), Frames = n.Frames.Add(new Frame.FApp(arg)) }),
+        Value.VMeta f => f with { Spine = f.Spine.Add(arg) },
+        Value.VVar r => r with { Spine = r.Spine.Add(arg) },
+        Value.VEffect e => e with { Params = e.Params.Add(arg) },
+        var other => throw new FunException($"applying non-function: {other.GetType().Name}"),
+    };
+
+    private static Value ApplyTy(MetaContext mc, Value ty, Value arg) =>
+        ty is Value.VPi pi ? ApplyClosure(mc, pi.Codomain, arg) : Value.VU.Instance;
+
+    public static Value ApplyClosure(MetaContext mc, Closure closure, Value arg) =>
+        Eval(mc, closure.Environment.Push(arg), closure.Body);
+
+    private static Value Project(Value of, int index) => of switch
+    {
+        Value.VProd p => p.Items[index],
+        Value.VProdTy p => p.Items[index],
+        Value.VNeutral n => n with { Ty = Value.VU.Instance, Frames = n.Frames.Add(new Frame.FProj(index)) },
+        Value.VMeta f => new Value.VNeutral(Value.VU.Instance, new Head.HMeta(f.Id), Spine(f.Spine).Add(new Frame.FProj(index))),
+        Value.VVar r => new Value.VNeutral(Value.VU.Instance, new Head.HVar(r.Level), Spine(r.Spine).Add(new Frame.FProj(index))),
+        _ => throw new FunException("projection of a non-tuple"),
+    };
+
+    private static EquatableArray<Frame> Spine(EquatableArray<Value> spine) =>
+        [.. spine.Select(v => (Frame)new Frame.FApp(v))];
+
+    // ---- metas ----------------------------------------------------
+
+    private static Value Meta(MetaContext mc, int id) =>
+        mc.Solution(id) ?? new Value.VMeta(id, []);
+
+    /// <summary>
+    /// A meta as the elaborator created it: applied to every entry in
+    /// the context that is a bound entry, skipping the defined ones,
+    /// whose values are already known.
+    /// </summary>
+    private static Value InsertedMeta(MetaContext mc, Environment env, int id, EquatableArray<EntryKind> kinds)
+    {
+        if (kinds.Length != env.Count)
+            throw new InvalidOperationException(
+                $"bd mask length mismatch: {kinds.Length} entries against an environment of {env.Count}");
+        var value = Meta(mc, id);
+        for (var i = kinds.Length - 1; i >= 0; i--)
+            if (kinds[i] == EntryKind.Bound)
+                value = ApplyStuck(mc, value, env[i]);
+        return value;
+    }
+
+    // ---- readback ---------------------------------------------------------
+
+    /// <summary>
+    /// Reads a value back as a term at <paramref name="width"/> entries, turning
+    /// levels back into indices.
+    /// </summary>
+    // Recurses natively: its width is the value's structure (a type), never a
+    // program's call width.
+    public static Term Quote(MetaContext mc, int width, Value value)
+    {
+        var fresh = new Value.VVar(width, []);
+        // A deferred call reads back as the call, not its unfolding.
+        if (value is Value.VGlued glued)
+            return glued.Args.Aggregate(
+                Quote(mc, width, glued.Fix),
+                (acc, a) => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, width, a)));
+        return Force(mc, value) switch
+        {
+            Value.VFix fix => QuoteFix(mc, width, fix),
+            Value.VLam lam => new Term.Lam(Quote(mc, width + 1, ApplyClosure(mc, lam.Body, fresh))),
+            Value.VPi pi => new Term.Pi(pi.Explicitness, Quote(mc, width, pi.Domain),
+                Quote(mc, width + 1, ApplyClosure(mc, pi.Codomain, fresh))) { Row = QuoteRowClosure(mc, width, pi.Row) },
+            Value.VEffectRowTy => Term.EffectRowTy.Instance,
+            Value.VEffectRow row => new Term.EffectRowLit(QuoteRow(mc, width, row)),
+            Value.VEffect effect => QuoteEffect(mc, width, effect),
+            Value.VU => Term.U.Instance,
+            Value.VAtom a => new Term.Atom(a.Atom),
+            Value.VAtomTy a => new Term.AtomTy(a.Ty),
+            Value.VProd p => new Term.Prod([.. p.Items.Select(i => Quote(mc, width, i))]),
+            Value.VProdTy p => new Term.ProdTy([.. p.Items.Select(i => Quote(mc, width, i))]),
+            Value.VMeta f => QuoteSpine(mc, width, new Term.Meta(f.Id), f.Spine),
+            Value.VVar r => QuoteSpine(mc, width, new Term.Var(LevelToIndex(width, r.Level)), r.Spine),
+            Value.VNominal n => new Term.Nominal(n.Decl, [.. n.Captures.Select(c => Quote(mc, width, c))]),
+            Value.VPatternSynonym s => new Term.PatternSynonym(s),
+            Value.VRecursiveOccurrence o => QuoteRecursiveOccurrence(mc, width, o),
+            Value.VCon c => QuoteConstructed(mc, width, c),
+            // Evaluating the module pushes one entry per binding, so the ith
+            // binding's term is read i entries further in.
+            Value.VModule m => new Term.Module([.. m.Entries.Select((e, i) => QuoteEntry(mc, width + i, e, m.Partial))], m.Partial),
+            Value.VTrait t => new Term.TraitRef(t.Decl),
+            Value.VTraitDict dict => QuoteTraitDict(mc, width, dict),
+            Value.VStruct st => QuoteStruct(mc, width, st),
+            Value.VRecord r => new Term.RecordConstruct(Quote(mc, width, r.Type), [.. r.Fields.Select(f => (f.Name, Quote(mc, width, f.Value)))]),
+            Value.VSig sig => new Term.Sig(Quote(mc, width + 1, ApplyClosure(mc, sig.Body, fresh))),
+            Value.VRefTy r => new Term.RefTy(Quote(mc, width, r.Heap), Quote(mc, width, r.Element)),
+            Value.VRef => throw new FunException("a reference cell cannot be read back as a term"),
+            // Parity with nbe_quote.ml:181. Quoting a continuation is unreachable
+            // (no probe read one back), but the prototype names it an EvalError.
+            Value.VCont => throw new FunException("cannot quote continuation"),
+            Value.VNeutral n => n.Frames.Aggregate(QuoteHead(width, n.Head), (acc, frame) => frame switch
+            {
+                Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, width, a.Arg)),
+                Frame.FProj p => new Term.Proj(acc, p.Index),
+                Frame.FDot d => new Term.Dot(acc, d.Name),
+                Frame.FRefGet => new Term.RefGet(acc),
+                Frame.FRefSet s => new Term.RefSet(acc, Quote(mc, width, s.Value)),
+                Frame.FMatch m => QuoteStuckMatch(mc, width, m),
+                _ => throw new InvalidOperationException($"unhandled frame {frame.GetType().Name}"),
+            }),
+            // Unreachable: every remaining kind is either handled above or a value
+            // that cannot arise as a type.
+            var other => throw new InvalidOperationException($"unhandled value {other.GetType().Name}"),
+        };
+    }
+
+    private static Term QuoteSpine(MetaContext mc, int width, Term head, EquatableArray<Value> spine) =>
+        spine.Aggregate(head, (acc, v) => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, width, v)));
+
+    private static Term QuoteHead(int width, Head head) => head switch
+    {
+        Head.HVar v => new Term.Var(LevelToIndex(width, v.Level)),
+        Head.HMeta m => new Term.Meta(m.Id),
+        Head.HPrim p => new Term.Prim(p.Name),
+        _ => throw new InvalidOperationException($"unhandled head {head.GetType().Name}"),
+    };
+
+    /// <summary>A level as the index it is at <paramref name="width"/> entries.</summary>
+    public static int LevelToIndex(int width, int level) => width - level - 1;
+
+    /// <summary>A value with any solved meta or deferred call at its head resolved away.</summary>
+    // One request for the whole loop: a divergent call unfolds to another deferred
+    // call, and a request per unfold would refill the budget forever.
+    public static Value Force(MetaContext mc, Value value) =>
+        value is Value.VMeta or Value.VGlued
+            ? mc.Budget.Request("an evaluation", () => ForceLoop(mc, value))
+            : value;
+
+    private static Value ForceLoop(MetaContext mc, Value value)
+    {
+        while (true)
+        {
+            if (value is Value.VMeta meta && mc.Solution(meta.Id) is { } solution)
+                value = meta.Spine.Aggregate(solution, (f, a) => ApplyStuck(mc, f, a));
+            else if (value is Value.VGlued glued)
+                value = glued.Unfolded.Value;
+            else
+                return value;
+        }
+    }
+}

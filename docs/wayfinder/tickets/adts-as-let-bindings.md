@@ -1,6 +1,6 @@
 ---
 title: ADTs are declared by let bindings (`enum` expressions); `type` is deleted
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -19,7 +19,7 @@ blocked_by:
 Like records ([records-only-let-bindings](records-only-let-bindings.md)), a nominal
 ADT is a value declared by a let binding. The `type` keyword goes.
 
-```fun
+```quill
 Color = enum { Red, Green, Blue }
 Option = fn(A : Type) { enum { Some(A), None } }
 rec Tree = enum { Leaf, Node(Tree, Tree) }
@@ -65,7 +65,7 @@ The user may keep `type … = …` for ADTs **only as sugar**: a let binding of 
 `enum` plus an open of its constructors, so the branches are in scope without
 writing `open`.
 
-```fun
+```quill
 type Color = Red | Green | Blue
 // sugar for:
 Color = enum { Red, Green, Blue }; open Color
@@ -74,7 +74,7 @@ Color = enum { Red, Green, Blue }; open Color
 **Decided:** `type` is not compiler syntax. It is a `: Decl` macro in the prelude
 (Stage 11, library-level features) expanding to exactly the bind and the open:
 
-```fun
+```quill
 type Option A = Some(A) | None
 // expands to:
 Option = fn(A : Type) { enum { Some(A), None } }; open Option

@@ -1,6 +1,6 @@
 ---
 title: Delete Surface.t; elaborate expanded Syntax.t
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

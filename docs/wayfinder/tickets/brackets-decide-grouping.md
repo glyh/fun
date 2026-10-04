@@ -1,6 +1,6 @@
 ---
 title: Brackets decide grouping — structural hole extents, Rust-style arms
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed
@@ -22,7 +22,7 @@ bounded by a keyword (`then 40 + 2 else`), a condition before a group
 separator and pattern union. The branch answers them with a split parsing
 policy. Rhombus (shrubbery notation, `/home/lyh/pullground/rhombus`) answers most
 of them structurally instead: the reader's tree decides extents before any macro
-runs. We adopt that idea **without** layout: `fun` has no indentation-sensitive
+runs. We adopt that idea **without** layout: `quill` has no indentation-sensitive
 syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
 
 ## Decision
@@ -31,7 +31,7 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
    separate. An extent is never chosen by a parser guess.
    - A hole is bounded structurally: a whole group, or the trailing hole.
    - A bare keyword does not end an expression hole. Branches are brace groups:
-     ```fun
+     ```quill
      syntax choose { choose ($c) $(a : Block) else $(b : Block) => … }
      choose (flag) { 40 + 2 } else { 0 }
      ```
@@ -39,7 +39,7 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
    - Nesting is owned by braces: `when (True) { if (False) { 1 } else { 2 } } else { 0 }`.
 2. **Arms are Rust-style; `|` is only union.** (**Implemented** 2026-09-15, branch `rust-arms`: one structural splitter, `Enforest_util.split_match_branches`; prelude and tests migrated.) Match arms, effect branches and
    syntax-form rules drop the leading `|`:
-   ```fun
+   ```quill
    match (n) {
      A | B => { x = 1; x + 1 }   // brace body: comma optional
      Some(x) => x + 1,           // expression body: comma required
@@ -57,7 +57,7 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
 3. **Precedence is relative, in named order groups** (grilled 2026-09-15; numbers
    replaced because "it is often unclear what precedence to assign at all").
    (**Implemented** 2026-09-15, branch `order-groups`; spelling as below.)
-   ```fun
+   ```quill
    order comparison;
    order additive : stronger_than(comparison) assoc(left);
    order multiplicative : stronger_than(additive);
@@ -180,10 +180,10 @@ Checked before closing, so the close rests on the repository and not on this tic
   `capture-extents`, `rust-arms`, `order-groups`, `order-group-leftovers` and `weakest-group`.
   The `Why` section's "branch `capture-extents`, unmerged" is stale.
 - **The last implementation leftover landed.** "`Std.additive` … only the parsing is missing" is
-  done: `src/Fun.Expand/Enforest.Roles.cs:358` reads a dotted group off the unit path
-  (`Enforest.Roles.cs:18`'s `UnitRoles`), and it is pinned twice — `macros/core-260.fun`
+  done: `src/Quill.Expand/Enforest.Roles.cs:358` reads a dotted group off the unit path
+  (`Enforest.Roles.cs:18`'s `UnitRoles`), and it is pinned twice — `macros/core-260.qll`
   (`Std = import "std"`, `order tight : stronger_than(Std.multiplicative)`) and
-  `imports/order-group-through-unit-path.fun` (+ its `.unit-g.fun`).
+  `imports/order-group-through-unit-path.qll` (+ its `.unit-g.qll`).
 - **Each decided rule that has a case.** `values/order-groups-transitive`,
   `values/order-group-left-assoc`, `elaborate/order-groups-unrelated` (the "no declared order"
   error), `elaborate/order-assoc-none-does-not-chain` (rule 3's `assoc(none)`),
@@ -196,7 +196,7 @@ Checked before closing, so the close rests on the repository and not on this tic
   hole — appears nowhere in the repo.
 - **Not verified.** The `OpenSuppliesRole "not"` note says "fixed 2026-09-15" and adds "likely
   pre-existing … Investigate"; the error name is gone from `src/` and
-  `elaborate/open-supplies-role.fun` exists, which is consistent with the fix, but the case was
+  `elaborate/open-supplies-role.qll` exists, which is consistent with the fix, but the case was
   not read line by line and the investigation the note asks for was not performed.
 
 The two `Open` bullets stay deferred, unchanged: tail-returning forms (Rhombus' `'macro`

@@ -20,7 +20,7 @@ Modules have two mutually exclusive visibility modes:
 
 Opaque types are declared without a right-hand side in a signature:
 
-```fun
+```quill
 -- Mode A: inline pub
 module M = do
   type Hidden = Wrap

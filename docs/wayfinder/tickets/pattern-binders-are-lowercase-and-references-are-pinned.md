@@ -1,11 +1,11 @@
 ---
 title: A pattern binder is lowercase; naming an existing term takes `^`
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
 closed_date: 2026-09-28
-resolution: Closed 2026-09-28 — both stages and every follow-up landed. Stage 1 (`665b8e3`) added the pin `^`, arrows, universes and tuple type patterns **additively**: 876 → 888 cases with *no* existing expected value changed, which was the proof it was designed around. Stage 2 (`997b57c`) made case decide a pattern name's role — lowercase binds, uppercase refers, an unresolved uppercase is an error — with `trait Eq(a)` and `impl Size(Option(a))` as the enforced spellings, migrating 41 `.fun` files, `std/lib.fun` and the live docs (892 cases). The follow-ups (`f705101`) then wired the unreachable-arm check as an error, restricted `a -> b` to an explicit and non-dependent Pi, and added `[a] -> b` for an implicit Pi with its binder nameable, so `[k] -> k -> k` matches `[k : Type] -> k -> k` (903 cases). The merge had to lowercase one line of stage 1's own new case, which the two parallel forks could not see. Residues recorded rather than chased: `[a]` binds the Pi's domain as `Type` only (nothing needs a non-`Type` domain yet); the pin matcher now matches when the scrutinee *is* the pinned rigid variable, which is what lets a binder's reference resolve; and a dependency check on an arrow applies the codomain closure to a *variable*, never a meta. The one form held by the user — an or-pattern in a head — is ruled on [an impl head is a pattern over types](pattern-headed-impls.md) and unbuilt until a call site appears.
+resolution: Closed 2026-09-28 — both stages and every follow-up landed. Stage 1 (`665b8e3`) added the pin `^`, arrows, universes and tuple type patterns **additively**: 876 → 888 cases with *no* existing expected value changed, which was the proof it was designed around. Stage 2 (`997b57c`) made case decide a pattern name's role — lowercase binds, uppercase refers, an unresolved uppercase is an error — with `trait Eq(a)` and `impl Size(Option(a))` as the enforced spellings, migrating 41 `.qll` files, `std/lib.qll` and the live docs (892 cases). The follow-ups (`f705101`) then wired the unreachable-arm check as an error, restricted `a -> b` to an explicit and non-dependent Pi, and added `[a] -> b` for an implicit Pi with its binder nameable, so `[k] -> k -> k` matches `[k : Type] -> k -> k` (903 cases). The merge had to lowercase one line of stage 1's own new case, which the two parallel forks could not see. Residues recorded rather than chased: `[a]` binds the Pi's domain as `Type` only (nothing needs a non-`Type` domain yet); the pin matcher now matches when the scrutinee *is* the pinned rigid variable, which is what lets a binder's reference resolve; and a dependency check on an arrow applies the codomain closure to a *variable*, never a meta. The one form held by the user — an or-pattern in a head — is ruled on [an impl head is a pattern over types](pattern-headed-impls.md) and unbuilt until a call site appears.
 assignee:
 blocked_by: []
 ---
@@ -200,7 +200,7 @@ in a type-case ``, `unexpected terms after the pattern: Bool`.
      matches both.
    - **A new pattern form `[a] -> b` matches an implicit Pi and names its binder.** The shape
      that motivated it:
-     ```fun
+     ```quill
      match (T) { [k] -> k -> k => … }    # against [k : Type] -> k -> k
      ```
      `k` is the Pi's own binder and the `k` inside the codomain pattern **refers** to it —
@@ -216,7 +216,7 @@ in a type-case ``, `unexpected terms after the pattern: Bool`.
    - **Unmeasured:** arrows carrying effect annotations (`->{E}`) — which side of the
      explicit/implicit split they fall on is a probe, not a guess.
 
-   Stage 1's own case (`pattern-arrow-type-case.fun`) uses only explicit, non-dependent
+   Stage 1's own case (`pattern-arrow-type-case.qll`) uses only explicit, non-dependent
    arrows (`I64 -> Bool`, `I64 -> I64`, expect 3), so neither restriction is covered by it:
    both need new cases — the implicit form against a polymorphic type, and the explicit form
    *failing* to match one — plus the `[k] -> k -> k` dependently-matched case.
@@ -273,7 +273,7 @@ spellings that now mean something else.
    (`ElaborateTrait`, `Elaborator.Traits.cs:41`). The message names the term and
    the fix (`A` in `impl Size(Option(A))` is a reference; write `a` to bind).
 2. **Keywords** resolve before that check and are never binders or pins: `Self`
-   is uppercase and *refers*, so `pub impl Eq(Self)` (`core-152.fun`) stays legal
+   is uppercase and *refers*, so `pub impl Eq(Self)` (`core-152.qll`) stays legal
    with no exemption — the rule is merely ordered after keyword resolution. `^Self`
    is an error (a keyword is not a term).
 3. **Pattern synonyms need no code**: `pattern Two(A, B)` already fails
@@ -284,13 +284,13 @@ spellings that now mean something else.
 
    | spelling | under the rule | action |
    |---|---|---|
-   | `impl Size(A)` (blanket, `trait-impl-precision.fun`) | unresolvable reference | → `impl Size(a)` |
+   | `impl Size(A)` (blanket, `trait-impl-precision.qll`) | unresolvable reference | → `impl Size(a)` |
    | `impl Size(Option(A))` ×12, `impl Size(I64 -> A)` ×2, `impl Size(B -> Bool)` ×2, `impl Size(Tuple(2, A, B))` ×1 | a free uppercase name binds today | → lowercase |
-   | `impl Eq(C)` with `pub type C = R` above (`elab-194.fun`), `eq_T : impl Eq(T)` (`elab-087.fun`) | already in scope → a reference | unchanged |
-   | `pub impl Eq(Self)` (`core-152.fun`) | keyword | unchanged |
+   | `impl Eq(C)` with `pub type C = R` above (`elab-194.qll`), `eq_T : impl Eq(T)` (`elab-087.qll`) | already in scope → a reference | unchanged |
+   | `pub impl Eq(Self)` (`core-152.qll`) | keyword | unchanged |
    | 44 trait declarations `trait Size(A) = sig { size : A -> I64 }` | parameter must be lowercase | → `Size(a)` / `a -> I64` |
-   | `std/lib.fun:32` `pub trait Eq(A) = sig { eq : A -> A -> Bool }` | same | → `Eq(a)` / `a -> a -> Bool` (`std` has **no** generic impls) |
-   | `test/Fun.Tests/TraitTests.cs` head strings | same | → lowercase |
+   | `std/lib.qll:32` `pub trait Eq(A) = sig { eq : A -> A -> Bool }` | same | → `Eq(a)` / `a -> a -> Bool` (`std` has **no** generic impls) |
+   | `test/Quill.Tests/TraitTests.cs` head strings | same | → lowercase |
    | live docs: `CLAUDE.md`, `CONTEXT.md`, `docs/STATUS.md`, `docs/wayfinder/topics/**` | 21 occurrences | → lowercase |
    | `docs/wayfinder/tickets/**` (including this one), `macro-system/` | dated records | untouched — a ticket keeps the spelling it was written with, the same way closed tickets keep the old `do … end` syntax |
 
@@ -318,7 +318,7 @@ reach it (`pub impl Eq(Self)` still resolves). Rejections, measured: `trait Size
 binder must be lowercase; write `a` to bind ```; `pattern Two(A, B)` → `unbound variable: A`
 (already the rule, no code).
 
-Migrated: 41 `.fun`/`.unit-lib.fun` files, `std/lib.fun:32`, the `TraitTests.cs` /
+Migrated: 41 `.qll`/`.unit-lib.qll` files, `std/lib.qll:32`, the `TraitTests.cs` /
 `ReflectionTests.cs` strings, doc comments in `Elaborator.Traits.cs` / `Enforest.Traits.cs`,
 and live docs (`STATUS.md`, `topics/traits.md`, `topics/trait-module-stdlib.md`); tickets and
 `macro-system/` untouched. Added 4 case pairs and 2 xUnit tests.
@@ -329,10 +329,10 @@ bare `impl Size(A)` and nested `impl Size(Option(A))` — kept under those two c
 Override if they were meant to read differently.
 
 **One fix the merge needed, because the two stages ran in parallel:** stage 1's
-`pattern-pin-impl-head.fun` was written before the rule existed and spelled
+`pattern-pin-impl-head.qll` was written before the rule existed and spelled
 `trait Size(A) = sig { size : A -> I64 }`; the merge lowercased it. The two other uppercase
 `trait Size(A)` occurrences in the tree are the *negative* cases that assert the error
-(`trait-parameter-must-be-lowercase.fun` and its xUnit sibling) and must stay as they are.
+(`trait-parameter-must-be-lowercase.qll` and its xUnit sibling) and must stay as they are.
 
 ## What this settles, and the boundary
 
@@ -363,8 +363,8 @@ Override if they were meant to read differently.
 
 ## Gates
 
-Every stage: `dotnet build`, `dotnet test test/Fun.Tests`, and
-`dotnet run --project test/Fun.Conformance` — **the case count must not drop and
+Every stage: `dotnet build`, `dotnet test test/Quill.Tests`, and
+`dotnet run --project test/Quill.Conformance` — **the case count must not drop and
 no expected value may change in stage 1**. Stage 2 also re-runs the type-case
 cases (`core-073`, `type-case-struct-field-type`,
 `pattern-synonym-over-struct-type-case-subposition`) and every case whose file

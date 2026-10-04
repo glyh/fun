@@ -1,6 +1,6 @@
 ---
 title: Records are declared only by let bindings; recursion through `rec`
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -18,7 +18,7 @@ blocked_by:
 One syntax per construct: a record type is a value, so it is declared only by a
 let binding. `type X = struct { … }` is deleted, with an error naming the new form.
 
-```fun
+```quill
 P = struct { x : I64 }                                           // plain record, structural
 List = fn(A : Type) { struct { meta : A; count : I64 } }         // parameters are a function
 rec Numbers = struct { head : I64; tail : Option(Numbers) }      // recursive

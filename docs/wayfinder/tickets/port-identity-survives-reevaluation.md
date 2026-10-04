@@ -92,7 +92,7 @@ not run, and that reading is recorded on the new ticket where it matters.
 
 ## Reading
 
-- `dotnet/src/Fun.Compiler/Nbe.Generative.cs` (all of it), `Nbe.Patterns.cs:88`,
+- `dotnet/src/Quill.Compiler/Nbe.Generative.cs` (all of it), `Nbe.Patterns.cs:88`,
   `Nbe.Force`, `Budget.cs`
 - [nominal identity is applicative by purity](nominal-identity-applicative-by-purity.md) — the
   decision this generalises

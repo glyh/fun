@@ -1,6 +1,6 @@
 ---
 title: A budget error names a core term, not the call or the conversion
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

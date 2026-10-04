@@ -42,13 +42,13 @@ its cause). Probe.
 
 **Added by the latent gaps fork** — it reported these rather than guessing:
 
-1. **G4, a type-aware operator macro** (`dotnet/src/Fun.Expand/Expander.Macros.cs:306`).
+1. **G4, a type-aware operator macro** (`dotnet/src/Quill.Expand/Expander.Macros.cs:306`).
    It refuses an operator entry whose `Signature is not null`, which the prototype's
-   `syntax_operator_arg` admits. The prelude in `dotnet/std/stage2.fun` declares
+   `syntax_operator_arg` admits. The prelude in `dotnet/std/stage2.qll` declares
    operators, so check whether a *typed* operator macro exists in the prototype at all
    before porting — if only the untyped form is exercised anywhere, this may be parity.
 2. **G5, recursive-enum captures predicted by name**
-   (`dotnet/src/Fun.Compiler/Elaborator.RecTypes.cs:62`). **Checked and not subsumed by
+   (`dotnet/src/Quill.Compiler/Elaborator.RecTypes.cs:62`). **Checked and not subsumed by
    the landed E11 work**: `PredictCaptures` still predicts from `NamedLevels` alone while
    `InferEnum` adds payload `FreeLevels`, so a name-based prediction sits beside a
    use-based one — which both over- and under-captures. But a block-local probe passed in
@@ -58,15 +58,15 @@ its cause). Probe.
 since settled: the parametric nominal in a generative module, and the neutral
 sub-occurrence, which the user ruled on — [the match waits](port-stuck-match-sub-occurrence.md)):
 
-3. `dotnet/src/Fun.Compiler/Elaborator.cs:304` — `Syntax.Stx`, the typed-macro-argument
+3. `dotnet/src/Quill.Compiler/Elaborator.cs:304` — `Syntax.Stx`, the typed-macro-argument
    marker the expander leaves for the elaborator, has no `Infer` case. Program shape: a
    typed macro whose argument is placed in its output. Note the port elaborates a typed
    argument twice (a `ponytail:` stopgap), so the marker may indicate a real hole rather
    than an unreachable one.
-4. `dotnet/src/Fun.Compiler/Unify.cs:206` — which `Value` kinds may appear in a meta
+4. `dotnet/src/Quill.Compiler/Unify.cs:206` — which `Value` kinds may appear in a meta
    solution. `Rename` (now complete, see [the latent gaps](port-latent-form-gaps.md))
    hands this its inputs, so start from what `Rename` can produce.
-5. `dotnet/src/Fun.Compiler/Nbe.cs:561` — can `VCont` be read back as a term? A
+5. `dotnet/src/Quill.Compiler/Nbe.cs:561` — can `VCont` be read back as a term? A
    continuation escapes a handler's body only through `resume`; relate it to the E6 rule
    on [handlers tunnelling callback effects](handlers-tunnel-callback-effects.md) (closed).
 6. ~~**The pattern-synonym cluster**~~ — **the product/binder half is settled (user
@@ -80,11 +80,11 @@ sub-occurrence, which the user ruled on — [the match waits](port-stuck-match-s
    gathered — do not repeat it:** a zero-parameter type-case synonym
    (`pub pattern IsI64 = I64`) works in **both** runners, so a type-case right-hand side
    is not part of this gap.
-   **Still yours to probe** (current lines in `dotnet/src/Fun.Compiler/Elaborator.Patterns.cs`):
+   **Still yours to probe** (current lines in `dotnet/src/Quill.Compiler/Elaborator.Patterns.cs`):
    `:75` `NeedsDirectMatch` — a right-hand side that needs the direct-match machinery;
    and `:87` — a parameter type that stays a meta, which under the ruling is *the thing
    that gets generalized*, so it should dissolve rather than need a verdict of its own.
-7. `dotnet/src/Fun.Expand/Enforest.Roles.cs:845` — which quoted-syntax statements take a
+7. `dotnet/src/Quill.Expand/Enforest.Roles.cs:845` — which quoted-syntax statements take a
    body (`WithBody`). Program shape: `quote { … }` containing a statement other than
    `let`/`rec`/`open`/`syntax`/`macro`.
 
@@ -123,6 +123,6 @@ Corrected line numbers at `32aa27e` (the ticket's originals in parentheses):
 is `:222` (`:206`/`:223`). `Elaborator.Patterns.cs:75`/`:87` matched as written.
 
 Resumable transcripts of both probe attempts are under
-`/tmp/pi-subagents-1000/home-lyh-pullground-fun/01a0d1e2-8670-75e3-a2ef-72dadaf596b5/tasks/`
+`/tmp/pi-subagents-1000/home-lyh-pullground-quill/01a0d1e2-8670-75e3-a2ef-72dadaf596b5/tasks/`
 (`d0b516c6…` the first, `1abe1ca5…` the second) — convenience only; this section is the
 record.

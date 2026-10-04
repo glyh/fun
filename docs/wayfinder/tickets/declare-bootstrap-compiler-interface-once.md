@@ -1,11 +1,11 @@
 ---
 title: Declare the bootstrap↔compiler interface once
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed
 closed_date: 2026-09-27
-resolution: "Closed 2026-09-27: route (1) implemented and merged (`9f60619`), gate 0 build errors / xUnit 187/187 / `conformance: 798 cases, 0 failed`. `src/Fun.Kernel/PreludeAbi.cs` holds 160 names in three groups, `Prelude.Load` verifies them eagerly against the bootstrap stage, and no bare prelude name is spelled outside the declaration. The tag count in the table below was wrong a second time — the corrected split is in `Landed`."
+resolution: "Closed 2026-09-27: route (1) implemented and merged (`9f60619`), gate 0 build errors / xUnit 187/187 / `conformance: 798 cases, 0 failed`. `src/Quill.Kernel/PreludeAbi.cs` holds 160 names in three groups, `Prelude.Load` verifies them eagerly against the bootstrap stage, and no bare prelude name is spelled outside the declaration. The tag count in the table below was wrong a second time — the corrected split is in `Landed`."
 assignee:
 blocked_by: []
 ---
@@ -32,11 +32,11 @@ Chosen over three alternatives, recorded so they are not re-proposed blind:
 
 | Route | Verdict |
 | --- | --- |
-| Generate the C# names from `bootstrap.fun` | **Deferred.** It would only supply *spellings*, not the selection (below). Also blocked mechanically: every project is `net10.0` and a Roslyn source generator must be `netstandard2.0`, so it cannot reference `Fun.Expand`; it would have to be an MSBuild `Exec` of a console tool. |
-| Mark the ABI in the prelude itself (new surface syntax) | **Rejected for now.** The only route that makes `.fun` authoritative for names *and* content — but it is a language change made for the compiler's convenience, and the map's fog cautions against exactly that. |
+| Generate the C# names from `bootstrap.qll` | **Deferred.** It would only supply *spellings*, not the selection (below). Also blocked mechanically: every project is `net10.0` and a Roslyn source generator must be `netstandard2.0`, so it cannot reference `Quill.Expand`; it would have to be an MSBuild `Exec` of a console tool. |
+| Mark the ABI in the prelude itself (new surface syntax) | **Rejected for now.** The only route that makes `.qll` authoritative for names *and* content — but it is a language change made for the compiler's convenience, and the map's fog cautions against exactly that. |
 | Leave it, document it | **Rejected.** See the silent-drift tier below. |
 
-**Why `.fun` cannot be the sole source.** `bootstrap.fun` supplies spellings. It
+**Why `.qll` cannot be the sole source.** `bootstrap.qll` supplies spellings. It
 cannot supply the interface, because the interface is a fact about the compiler's
 *usage*: which names matter, in which role (nominal type vs structural member vs
 constructor-read-by-name), that `Bool`/`Option`/`List` live outside the `Syntax`
@@ -196,7 +196,7 @@ the remaining type names are the tier that already fails loudly at load (`Reflec
 Put to the user again after the first version of the table above was found wrong, and looked at
 side by side as code. **Decided: `PreludeAbi.cs` holds the whole interface, ~160 names, resolved
 eagerly in `Prelude.Load`.** Route (2) — shrink the surface first, moving the tag spellings into
-`.fun` — is **not** taken. The tags stay spelled in C#, but only inside the declaration, and every
+`.qll` — is **not** taken. The tags stay spelled in C#, but only inside the declaration, and every
 consumer references the declaration.
 
 What this means for whoever implements it:
@@ -205,10 +205,10 @@ What this means for whoever implements it:
    `mk_option`, `pat_wild`, …), 24 **type and module names** (`Syntax`'s 23 nominals plus
    `Decls`), and the 158 **tags** (45 built, 113 read back). `const` and not `static readonly`:
    198 readback sites are `case` labels, and only a compile-time constant is legal there.
-2. **Where it lives is a real constraint.** `Fun.Expand` cannot reference `Fun.Compiler`, and
+2. **Where it lives is a real constraint.** `Quill.Expand` cannot reference `Quill.Compiler`, and
    three of the five consumers (`Expander.Macros.cs`, `Enforest.Macros.cs`, `Enforest.Roles.cs`)
-   are inside `Fun.Expand`. So the **data** belongs in `Fun.Kernel` or `Fun.Expand` — never
-   `Fun.Compiler` — while its **`Verify`** (which needs the loaded stage) belongs with `Prelude`.
+   are inside `Quill.Expand`. So the **data** belongs in `Quill.Kernel` or `Quill.Expand` — never
+   `Quill.Compiler` — while its **`Verify`** (which needs the loaded stage) belongs with `Prelude`.
    Decide and justify the placement in the report.
 3. **Reference, do not restate, the unit paths**: `Prelude.Path`, `Stage1Path`, `Binding` are
    already single-sourced. `Type` is **not** in the interface — the compiler spells it and it
@@ -228,8 +228,8 @@ What this means for whoever implements it:
    re-litigated.
 
 **Cost accepted, stated plainly:** the declaration mirrors the prelude's shape. That is the
-reading chosen over moving the spellings into `.fun`, and the reason is in this ticket's own
-history — `.fun` cannot be the sole source, because the interface is a fact about the compiler's
+reading chosen over moving the spellings into `.qll`, and the reason is in this ticket's own
+history — `.qll` cannot be the sole source, because the interface is a fact about the compiler's
 *usage*: which names matter, in which role, and that `Type` is the elaborator's.
 
 **For whoever measures next:** the first version of the table above was wrong by a factor of forty
@@ -243,12 +243,12 @@ Merged from `declare-bootstrap-interface` (`ad0e826` declaration + eager `Verify
 `dotnet build` 0 errors, xUnit **187/187** (the one new test is the declaration resolving),
 `conformance: 798 cases, 0 failed`.
 
-- **`src/Fun.Kernel/PreludeAbi.cs`, 339 lines, 160 names** — 19 builders, 26 type and module names,
+- **`src/Quill.Kernel/PreludeAbi.cs`, 339 lines, 160 names** — 19 builders, 26 type and module names,
   114 tags — as `const string`, so the readback `case` labels stay compile-time constants.
-- **Placement, with the reason:** the *data* is in `Fun.Kernel`, because three of the five
+- **Placement, with the reason:** the *data* is in `Quill.Kernel`, because three of the five
   consumers (`Expander.Macros.cs`, `Enforest.Macros.cs`, `Enforest.Roles.cs`) are inside
-  `Fun.Expand`, which cannot reference `Fun.Compiler`. The *check* is in
-  `Fun.Compiler/Prelude.cs`, which owns the loaded stage.
+  `Quill.Expand`, which cannot reference `Quill.Compiler`. The *check* is in
+  `Quill.Compiler/Prelude.cs`, which owns the loaded stage.
 - **Verified eagerly at load**: `Prelude.cs:69` (`if (std is null) Verify(stage);`), so the
   check runs while the bootstrap stage loads and not on first reflection use. Demonstrated by
   breaking one constant on purpose and reading the message:
@@ -277,7 +277,7 @@ not the one whose name you guessed.
   only, mapping to `Syntax.Expr`) stays spelled. Whether either should move is a ruling, not a
   measurement — [the spellings this declaration leaves](prelude-abi-remaining-spellings.md).
 - **Not verified against the restructured `std`.** The `std` split was in flight while this landed,
-  so the declaration has never been exercised against `std/bootstrap.fun` and its renamed unit
+  so the declaration has never been exercised against `std/bootstrap.qll` and its renamed unit
   paths. The integrator's gate on that merge covers it; note that **both branches create
   `std/README.md`**, so that file will need both sides kept.
   **Closed 2026-09-27:** the split merged as `16f9948` and the check was demonstrated against

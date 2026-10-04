@@ -1,0 +1,116 @@
+using Quill.Kernel;
+
+namespace Quill.Compiler;
+
+/// <summary>
+/// A generative nominal's sealing information (E11): the member label its declaring
+/// module bound it to, and how many type parameters the former takes. Null label for
+/// a nominal not bound directly as a member.
+/// </summary>
+public sealed record GenerativeNominal(string? Label, int NumParams);
+
+/// <summary>The metas of one elaboration, and what they have been solved to.</summary>
+public sealed class MetaContext
+{
+    private readonly List<Value?> _solutions = [];
+
+    /// <summary>The evaluation budget every evaluation under these metas spends from.</summary>
+    public Budget Budget { get; } = new();
+
+    /// <summary>
+    /// True only while a candidate impl's head is tested against a use (resolution's
+    /// match relation, <c>Elaborator.Matches</c>). Under it a struct is compared by its
+    /// field members alone, so a public binding or method is invisible exactly as a
+    /// private one is; the unifier proper leaves it false, so equality and member
+    /// access still see every shown member and the types stay distinct.
+    /// </summary>
+    public bool Matching { get; set; }
+
+    /// <summary>
+    /// First-order approximation, off by default (Lean's <c>foApprox</c>, the same name
+    /// and the same default). Under it <see cref="Unify.Solve"/> may solve a meta whose
+    /// spine is not a pattern - an entry that is not a distinct bound variable - by
+    /// taking the head of the right-hand side when that head's own arguments are exactly
+    /// the spine: <c>?F(I64) = List(I64)</c> becomes <c>?F := λx. List(x)</c>. It is an
+    /// approximation and not an inversion: a pattern spine determines its solution
+    /// uniquely, while this picks one of several, so it is enabled deliberately around
+    /// the argument check that needs it and nowhere else. The unifier proper leaves it
+    /// false, and a spine that is not a pattern is still refused there. Because it fires
+    /// only where a pattern would have been refused, it turns a present failure into a
+    /// success and cannot change a program that passes today.
+    /// </summary>
+    public bool FoApprox { get; set; }
+
+    public int Fresh()
+    {
+        _solutions.Add(null);
+        return _solutions.Count - 1;
+    }
+
+    public Value? Solution(int id) => _solutions[id];
+
+    /// <summary>How many metas exist: the id the next one gets.</summary>
+    public int Count => _solutions.Count;
+
+    /// <summary>Every nominal declaration made during this elaboration, in order.</summary>
+    public List<NominalDecl> DeclaredNominals { get; } = [];
+
+    /// <summary>
+    /// The generative nominals (E11): declared by a module whose evaluation performs.
+    /// Each maps to the member label it is bound to in that module (null when it is
+    /// not bound directly as a member) and, for a type former, how many parameters it
+    /// takes - sealing re-applies those, since an applied nominal's captures are its
+    /// parameters.
+    /// </summary>
+    public Dictionary<NominalDecl, GenerativeNominal> GenerativeNominals { get; } = [];
+
+    /// <summary>Impl choices waiting on argument types (traits.md, "Resolution", rule 4).</summary>
+    public List<PendingEvidence> PendingEvidence { get; } = [];
+
+    /// <summary>The metas standing for rows written <c>_</c>: one nothing solves is an error, never a default.</summary>
+    public List<int> WrittenRows { get; } = [];
+
+    /// <summary>
+    /// The metas instantiated for a pattern synonym's generalized types at a use:
+    /// they are the synonym's implicit type parameters, so one nothing solves where
+    /// its scope ends is an error, never left stuck.
+    /// </summary>
+    public List<int> SynonymTypeParams { get; } = [];
+
+    /// <summary>The solutions as they stand, to undo a trial unification with <see cref="Restore"/>.</summary>
+    public Value?[] Snapshot() => [.. _solutions];
+
+    /// <summary>
+    /// Back to <paramref name="snapshot"/>: solutions made since are undone and metas
+    /// created since keep existing, unsolved - an id handed out is never reused.
+    /// </summary>
+    public void Restore(Value?[] snapshot)
+    {
+        for (var i = 0; i < _solutions.Count; i++) _solutions[i] = i < snapshot.Length ? snapshot[i] : null;
+    }
+
+    /// <summary>
+    /// Makes a fresh context carry the prelude's metas, solutions and nominal
+    /// bookkeeping first, so a prelude value whose terms name one of its metas means
+    /// the same meta here, and this context's own metas never reuse an id.
+    /// </summary>
+    internal void SeedFrom(MetaContext prelude)
+    {
+        if (ReferenceEquals(this, prelude) || _seeded) return;
+        if (_solutions.Count > 0)
+            throw new InvalidOperationException("a meta context must be seeded from the prelude before it creates metas");
+        _solutions.AddRange(prelude._solutions);
+        DeclaredNominals.AddRange(prelude.DeclaredNominals);
+        foreach (var (decl, gen) in prelude.GenerativeNominals) GenerativeNominals[decl] = gen;
+        _seeded = true;
+    }
+
+    private bool _seeded;
+
+    public void Solve(int id, Value value)
+    {
+        if (_solutions[id] is not null)
+            throw new InvalidOperationException($"meta ?{id} is already solved");
+        _solutions[id] = value;
+    }
+}

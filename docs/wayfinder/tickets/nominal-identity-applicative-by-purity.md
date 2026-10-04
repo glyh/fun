@@ -1,6 +1,6 @@
 ---
 title: Nominal identity is applicative by purity
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -25,7 +25,7 @@ declared. Vocabulary: **Nominal** in [`CONTEXT.md`](../../../CONTEXT.md).
 
 Applicative — sharing required:
 
-```fun
+```quill
 Set = fn(Elem : Type, cmp : Elem -> Elem -> Ordering) -> module
   pub type T = Leaf | Node(T, Elem, T)
   pub union = fn(a : T, b : T) -> …
@@ -39,7 +39,7 @@ during conversion, so a type minted per evaluation would not equal itself.
 
 Generative — sharing forbidden:
 
-```fun
+```quill
 SymbolTable = fn(u : Unit) -> module
   table = ref(empty)
   pub type Symbol = private Sym(I64)
@@ -120,7 +120,7 @@ Generativity does **not** fall out of opacity. The maker's result type still
 names the nominal concretely, so a generative module cannot be used with its own
 type:
 
-```fun
+```quill
 SymbolTable = fn(u : Unit) { module {
   table = ref(0);
   pub type Symbol = Sym(I64);
@@ -161,7 +161,7 @@ what that body uses.
   `st1 = SymbolTable(())` makes `st1.Symbol` a type unique to `st1`;
   `st2.Symbol` is distinct. Inside `st1`, `intern : String -> st1.Symbol`.
   (OCaml generative-functor behaviour.)
-  ```fun
+  ```quill
   g = fn(x : st1.Symbol) { … };
   g(st1.intern("x"))   // ok
   g(st2.intern("x"))   // rejected

@@ -1,6 +1,6 @@
 ---
 title: An under-applied declaration macro is fed a dummy Unit
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -29,7 +29,7 @@ non-`Expr` kind, so an all-`Expr` call is not counted.
 
 ## Example
 
-```fun
+```quill
 macro two(a, b) : Decl { … };
 two(x);   // runs with b = (); should be an ArgumentCount error
 ```

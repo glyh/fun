@@ -1,6 +1,6 @@
 ---
 title: A Decl macro's output is typed — `Decl` or `List(Decl)`
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -24,7 +24,7 @@ by instantiating it with `VU`).
 
 The annotation says which, and the body is checked against it at the definition:
 
-```fun
+```quill
 macro one() : Decl { quote { a = 1 } }                  // exactly one declaration
 macro many() : List(Decl) { quote { a = 1; b = 2 } }    // any number (= Syntax.Decls)
 ```

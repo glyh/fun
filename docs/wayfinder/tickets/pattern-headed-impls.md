@@ -1,6 +1,6 @@
 ---
 title: An impl head is a pattern over types
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed
@@ -101,7 +101,7 @@ Premise corrections:
      *values* compared by `Matches` (unification). A pattern-valued head is tested
      against the use's argument types instead — one new path, not a new matcher:
      `CorePattern.StructType` already carries `Partial` and already matches a
-     `VStruct` (cased in `type-case-struct-field-type.fun`).
+     `VStruct` (cased in `type-case-struct-field-type.qll`).
    - **Rule 2 needs pattern subsumption.** `Instance(p, q)` currently asks whether
      one *value* is an instance of another; with a partial head it must ask it of
      two *patterns*. That relation is the one the new unreachable-arm check needs
@@ -127,7 +127,7 @@ Premise corrections:
    the choice is against facts, not taste: a nested structural head with *exact* fields
    already works (`impl Size(Option(struct { a : I64 }))` matched `Some(P{a = 1})` and did
    not match `Some(R{a = 1; b = True})`, which has an extra field), and a nested pin is cased
-   (`impl Size(Option(^z))` in `pattern-pin-impl-head.fun`). So `_` at depth is the
+   (`impl Size(Option(^z))` in `pattern-pin-impl-head.qll`). So `_` at depth is the
    consistent rule, not an exception: `impl Size(Option(struct { a : p; _ }))` means *a
    container of any record having field `a`, delegating to that field's evidence*. The
    top-level-only alternative would need a positional check for the one form in a head that
@@ -152,7 +152,7 @@ Premise corrections:
    the **same type**. That was wrong and is retracted: the precedents (PureScript, Elm,
    TypeScript) do **directed subtyping** — a wider record is usable where a narrower type is
    expected, one direction, and member access uses the declared type (`x: P; x.m()` errors).
-   `fun` keeps its types closed by measurement, so subtyping would be a language feature
+   `quill` keeps its types closed by measurement, so subtyping would be a language feature
    (its own ticket if ever wanted); what is ruled here is a matching rule only. A consequence
    of the retraction: the sibling question *"is `x.m()` reachable through a field-only
    annotation"* **dissolves**, because no legal `x : P = U{a = 1}` exists to ask it of.
@@ -213,7 +213,7 @@ matches by precision (`traits.md` rule 2).
 
 ## Why it is plausible rather than speculative
 
-Patterns are already first class at compile time. `std/stage1.fun` ships the
+Patterns are already first class at compile time. `std/stage1.qll` ships the
 `Syntax.Pattern` nominal with `RawPatWild`/`RawPatBind`/`RawPatCon`/`RawPatOr`, the
 builders `pat_wild`/`pat_var`/`pat_con`/`pat_atom`/`pat_prod`/`pat_or`, and the
 destructuring synonyms `PatWild`/`PatBind`/`PatCon`/`PatAtom`/`PatProd`/`PatOr`.

@@ -1,6 +1,6 @@
 ---
 title: `open` a module parameter — names from its signature
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -19,7 +19,7 @@ blocked_by:
 type known) is `NotAModule`, in the elaborator and in the evaluator. Left open by
 the effects-collect-open-width run, which made `open_module_value` the one path.
 
-```fun
+```quill
 Sig = sig { x : I64 };
 f = fn(M : Sig) { open M; x + 1 };   // NotAModule today
 f(module { pub x = 41 })             // want 42

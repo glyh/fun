@@ -1,6 +1,6 @@
 ---
 title: "A type-aware operator macro"
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: open
@@ -18,7 +18,7 @@ the port, not before it.
 
 ## What the probe measured (integrator, `32aa27e`)
 
-```fun
+```quill
 { infix (foo) (a, b) { Syntax.i64(9) };
   macro foo(x : Expr(I64)) : Expr(I64) { x };
   1 foo 2 }
@@ -37,7 +37,7 @@ ticket.
 
 The *untyped* form already works in both, which is why row 1 split in two:
 
-```fun
+```quill
 { infix (foo) (a, b) { Syntax.i64(9) }; macro foo(e) { Syntax.i64(1) }; 1 foo 2 }   -- 1 in both
 ```
 
@@ -78,7 +78,7 @@ answer until a macro actually needs it.
 
 ## Reading
 
-- `dotnet/src/Fun.Expand/Expander.Macros.cs:306`, `Enforest.Roles.cs`, and
+- `dotnet/src/Quill.Expand/Expander.Macros.cs:306`, `Enforest.Roles.cs`, and
   `ExpandMacroCall` in `Expander.Macros.cs`
 - `lib/expand/enforest.ml:681`, `lib/expand/enforest_util.ml:142`
 - [the unverified rows](port-unverified-rows.md) row 1 for the probe and its evidence

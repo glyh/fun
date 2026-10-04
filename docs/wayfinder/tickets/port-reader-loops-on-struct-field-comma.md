@@ -56,7 +56,7 @@ shape wedges the compiler.
 
 ## The smallest program
 
-```fun
+```quill
 { R = struct { f : I64, g : I64 }; 1 }
 ```
 

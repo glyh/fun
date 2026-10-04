@@ -6,14 +6,14 @@
 
 User code writes ordinary equality:
 
-```fun
+```quill
 x == y
 x != y
 ```
 
 The user-visible operation is trait-polymorphic through an implicit `Eq` bound:
 
-```fun
+```quill
 (==) : [A : Eq] -> A -> A -> Bool
 (!=) : [A : Eq] -> A -> A -> Bool
 ```
@@ -42,7 +42,7 @@ The parser treats built-in symbolic operators as fixed syntax for applying known
 
 Parenthesized operator identifiers can be used as values:
 
-```fun
+```quill
 do
   same = (==)
   same(1, 1)

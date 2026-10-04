@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add algebraic effects and handlers to `fun` in a way that fits the current dependent core pipeline:
+Add algebraic effects and handlers to `quill` in a way that fits the current dependent core pipeline:
 
 ```text
 Surface.t -> Elaborate.on_expr -> Core.term + semantic type -> NbE / interpreter

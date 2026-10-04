@@ -11,7 +11,7 @@ They share member syntax for ordinary bindings, but they are not interchangeable
 
 A module can contain private and public bindings:
 
-```fun
+```quill
 do
   Math = module
     helper = fn(x) -> x + x
@@ -29,7 +29,7 @@ Modules may contain public or private value, type, effect, trait, and impl bindi
 
 Field declarations make a `struct` usable as a record type:
 
-```fun
+```quill
 do
   Point = struct
     x: I64;
@@ -53,7 +53,7 @@ is why `x : struct { a : I64 } = struct { a = 1 }` fails. The failure is reporte
 
 Record instance fields are accessed with dot syntax:
 
-```fun
+```quill
 do
   p = Point{x = 3; y = 4}
   p.x + p.y
@@ -64,7 +64,7 @@ end
 
 Modules can contain nested nominal type bindings. Public type bindings expose the type and its constructors as public module members:
 
-```fun
+```quill
 do
   Colors = module
     pub type Color = Red | Green | Blue
@@ -100,7 +100,7 @@ type (`fn(m : module { … })` is `NotASignature`). A signature lists public
 requirements; extra public members on the argument are allowed, and a private
 binding does not satisfy a requirement.
 
-```fun
+```quill
 get_x = fn(m : sig { x : I64; y : Bool }) { m.x };
 get_x(module { pub x = 1; pub y = True })
 ```
@@ -109,7 +109,7 @@ A signature is a **telescope** over the module it describes: a later member's
 type may mention an earlier member, read through the module. For a parameter the
 earlier member stays abstract; for an argument it is the argument's own member.
 
-```fun
+```quill
 Stack = sig { T : Type; empty : T; size : T -> I64 };
 count = fn(s : Stack) { s.size(s.empty) };        // s.empty : s.T
 count(module { pub T = I64; pub empty = 7; pub size = fn(x : I64) { x + 1 } })
@@ -120,7 +120,7 @@ An impl a signature requires is **named** (`eq_T : impl Eq(T)`); an anonymous
 that name and type; the parameter reaches it as `s.eq_T`, and `open s` brings it
 into trait resolution.
 
-```fun
+```quill
 Ordered = sig { T : Type; eq_T : impl Eq(T) };
 same = fn(s : Ordered, a : s.T, b : s.T) { open s; Eq.eq(a, b) };
 ```
@@ -133,7 +133,7 @@ fresh module; `s1.T` and `s2.T` of two parameters are distinct.
 
 Unannotated field access remains record-oriented for unknown receivers. Passing modules through functions requires an explicit module signature when the function accesses module members:
 
-```fun
+```quill
 do
   S = module pub x = 42 end
   (fn(s : module pub x = I64 end) -> s.x)(S)

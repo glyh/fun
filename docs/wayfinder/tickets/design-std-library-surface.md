@@ -1,6 +1,6 @@
 ---
 title: Design the user-facing library surface of std
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: open
@@ -26,7 +26,7 @@ one branch at a time.
 
 - **Blocked by** [Restructure std into a bootstrap layer and a library layer](restructure-std-into-bootstrap-and-library.md),
   which decides the seam and lands the first cut. Design against the real
-  `std/bootstrap.fun` plus library units, not against a plan.
+  `std/bootstrap.qll` plus library units, not against a plan.
 - **The seam is already fixed**: the bootstrap layer is exactly what C#
   names by string (`Syntax` + `Bool`/`Option`/`List`). Their *names* and
   constructors cannot move, so the design must work around them rather than
@@ -44,7 +44,7 @@ one branch at a time.
 
 ## What the library does not have today (measured 2026-09-26)
 
-`std/lib.fun` after the restructure will hold `if`, `i64_to_bool`, the
+`std/lib.qll` after the restructure will hold `if`, `i64_to_bool`, the
 comparison/arithmetic operators and their fixity, `Eq` + five impls, and nothing
 else. Missing:
 
@@ -117,9 +117,9 @@ path expressions: that would give the unit tree and the value tree one spelling
 
 ### 4. The primitive floor is the boundary — String and `Show` wait
 
-`src/Fun.Compiler/Primitives.cs:44-73` is the whole floor: I64 arithmetic and six
+`src/Quill.Compiler/Primitives.cs:44-73` is the whole floor: I64 arithmetic and six
 comparisons, `eq/neq` for Char/Unit/String, `panic`, `expand_block`,
-`expand_decls`, `Tuple`/`tuple_arity`. There is **no** `print` and `src/Fun.Cli` is a
+`expand_decls`, `Tuple`/`tuple_arity`. There is **no** `print` and `src/Quill.Cli` is a
 stub, so a program communicates only by its return value. Therefore `I64.to_string`,
 `String.length/concat/split`, `Char`↔`String`, `Show`, and `Ord` beyond I64 are all
 out, and the out-list is honest rather than lazy: nothing could observe them yet.
@@ -166,7 +166,7 @@ them; **half-open is the recorded principle** if they land.
 `Lists`, `Options`, `Strings`. `List`/`Option`/`Bool`/`String` are the ABI's type
 names and cannot be reused: measured, `List.map` fails with `ELAB no constructor
 map` —
-`List` resolves to the type former. `std/stage2.fun` already pilots this privately
+`List` resolves to the type former. `std/stage2.qll` already pilots this privately
 (`Types`, `Lists`). This decides the *names*; which of them are declared is §16 and
 §19 — the first cut ships `Lists` and `Options` only.
 
@@ -178,10 +178,10 @@ functions snake_case, types singular.
 
 ### 12. Unit layout — one unit per module; `std` re-exports only the impls
 
-`std/list.fun` **is** the `Lists` module (functions plus
-`pub impl list_eq : Eq(List(A))` at its top); a new `std/option.fun` is `Options`
-(with `option_map`/`option_bind` moved out of list.fun and renamed `map`/`bind`);
-`std/stage2.fun` publishes them (`pub Lists = import "std/list"`) and re-exports
+`std/list.qll` **is** the `Lists` module (functions plus
+`pub impl list_eq : Eq(List(A))` at its top); a new `std/option.qll` is `Options`
+(with `option_map`/`option_bind` moved out of list.qll and renamed `map`/`bind`);
+`std/stage2.qll` publishes them (`pub Lists = import "std/list"`) and re-exports
 only the impls — `export Lists.{list_eq}` — so nothing flattens and
 `Std.Lists.map` is the only spelling of `map`.
 
@@ -214,8 +214,8 @@ The gap B would have closed — an impl reaching a use site only through a whole
 
 ### 14. Library-defined syntax — none added here
 
-`std/lib.fun` already declares `pub syntax if`, `pub infix (&&) conjunction` and
-five order groups, and `std/type.fun` declares `pub syntax type`. That right is
+`std/lib.qll` already declares `pub syntax if`, `pub infix (&&) conjunction` and
+five order groups, and `std/type.qll` declares `pub syntax type`. That right is
 untouched; the candidates that change how a user *writes* a program (a pipeline,
 list literals, an `Option` postfix) are
 [the Stage 11 spec](specify-stage-11-macro-powered-language-features.md)'s.

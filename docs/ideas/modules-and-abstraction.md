@@ -78,7 +78,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/apfnsl/advice_on_designin
 2022-07,
 https://www.reddit.com/r/ProgrammingLanguages/comments/vqx19e/modules_overcoming_stockholm_and_duningkruger/
 
-**Bearing on `fun`.** Has it differently, by decision: a **compilation unit** *is* a `.fun` file
+**Bearing on `quill`.** Has it differently, by decision: a **compilation unit** *is* a `.qll` file
 reached by `import` — but a unit is explicitly not a module, and `CONTEXT.md` names the
 conflation as the error ("conflating it with a module is what made 'modules must be closed' sound
 like it would break first-class modules"). Unit identity is the file; module identity is the
@@ -91,7 +91,7 @@ function. It is a closure over the context it was written in, so two calls that 
 module capture different contexts. Type-level contents ride inside the value.
 
 **Buys.** One mechanism for namespaces, parameterised libraries and runtime-selected
-configuration; `fun`'s own glossary states the payoff — "moving a *value* is always sound,
+configuration; `quill`'s own glossary states the payoff — "moving a *value* is always sound,
 because a value carries its environment with it — which is why first-class modules work and why
 importing one does not."
 
@@ -103,14 +103,14 @@ thread's source notes "paradoxes lie in the wings if you are not careful" (1ML's
 
 **Tried by.** OCaml's first-class modules and Scala objects `[general knowledge, not from
 corpus]` — the corpus shows OCaml's module system and 1ML but does not itself use the term
-"first-class modules"; `fun`.
+"first-class modules"; `quill`.
 
 **Source.** "Nuts or genius? \"Modules are classes/objects\"", score 40, 23 comments, 2021-06,
 https://www.reddit.com/r/ProgrammingLanguages/comments/nxumma/nuts_or_genius_modules_are_classesobjects/
 · "Are OCaml modules basically compile-time records?", score 18, 13 comments, 2024-07,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1e6d88x/are_ocaml_modules_basically_compiletime_records/
 
-**Bearing on `fun`.** Already has it (named): **modules are first-class values** that capture
+**Bearing on `quill`.** Already has it (named): **modules are first-class values** that capture
 their context like a closure, accessed by a dotted path that resolves to the *last* member of
 that name. The recorded consequence: **global coherence for impls is rejected** — unavailable
 when modules are values.
@@ -135,9 +135,9 @@ and a module signature are *not* interchangeable.
 
 **Maturity.** Research — argued in the thread with Zig `comptime` and Scala inner classes offered
 as adjacent precedents (the thread's analogy, not a demonstration); the full unification is built
-in `fun`, which is itself experimental.
+in `quill`, which is itself experimental.
 
-**Tried by.** `fun`; nobody else in this corpus ships one construct for all three. The closest
+**Tried by.** `quill`; nobody else in this corpus ships one construct for all three. The closest
 reported practice is Zig, described in a comment as having "only namespacing is structs … and all
 files are implicitly structs" — that is, the file, the namespace and the type are already one
 thing there (comment on "r/ProgrammingLanguages on Import Mechanisms").
@@ -147,8 +147,8 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1e6d88x/are_ocaml_modules
 · (comment above) "r/ProgrammingLanguages on Import Mechanisms", score 80, 30 comments, 2023-04,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1340z3r/rprogramminglanguages_on_import_mechanisms/
 
-**Bearing on `fun`.** Already has it (named): one `struct` serves as **record, module and
-namespace**. The line `fun` keeps anyway: a module is never a type — a signature is its own value
+**Bearing on `quill`.** Already has it (named): one `struct` serves as **record, module and
+namespace**. The line `quill` keeps anyway: a module is never a type — a signature is its own value
 (`sig { … }`), and checking a function that takes a module against a signature raises
 `NotASignature` rather than unifying a record type with a namespace.
 
@@ -176,7 +176,7 @@ path-dependent members is that not every expression can be the thing being descr
 **Maturity.** Shipped — OCaml signatures, Scala path-dependent types (the corpus names the Scala
 parallel).
 
-**Tried by.** OCaml, Scala, `fun`.
+**Tried by.** OCaml, Scala, `quill`.
 
 **Source.** "Are OCaml modules basically compile-time records?", score 18, 13 comments, 2024-07,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1e6d88x/are_ocaml_modules_basically_compiletime_records/
@@ -186,7 +186,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/15wdiqh/definitive_text_o
 2022-07,
 https://www.reddit.com/r/ProgrammingLanguages/comments/vqx19e/modules_overcoming_stockholm_and_duningkruger/
 
-**Bearing on `fun`.** Already has it (named): signatures are telescopes; `s.T` reads the member
+**Bearing on `quill`.** Already has it (named): signatures are telescopes; `s.T` reads the member
 through the module, abstract for a parameter and concrete for an argument; a `sig`'s required
 impls are named, and an anonymous `impl` in a `sig` is a parse error.
 
@@ -214,7 +214,7 @@ everything.
 
 **Maturity.** Speculative — argued, not built; no artifact ships the checklist.
 
-**Tried by.** Nobody has shipped this as a method; `fun`'s decisions happen to answer most rows.
+**Tried by.** Nobody has shipped this as a method; `quill`'s decisions happen to answer most rows.
 The thread's real output is a reading list rather than a method: Pierce's modules slides and
 *TAPL*, Dreyer and Rossberg's MixML, Leroy's "A Modular Module System" and the 1994 POPL paper
 "Abstract Types, Manifest Types, and Separate Compilation", Mark Jones's parameterised
@@ -227,7 +227,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/vqx19e/modules_overcoming
 152 comments, 2018-11,
 https://www.reddit.com/r/ProgrammingLanguages/comments/9um9nw/whats_your_ideal_language_feature/
 
-**Bearing on `fun`.** Use it as an audit: `fun` has ruled first-class-ness (yes, modules are
+**Bearing on `quill`.** Use it as an audit: `quill` has ruled first-class-ness (yes, modules are
 values), separate compilation (units base-anchored and deliberately *not* first-class), recursion
 (an import cycle is an error), generativity (a nominal declared under a run-time effect is
 generative; applicative under purity), and opacity — which is **open** on
@@ -255,9 +255,9 @@ declaration from a header file, this change would propagate to all your users" (
 are some language communities fine with unqualified imports and some are not?"). An open that a
 unit re-exports is a dependency edge it does not control.
 
-**Maturity.** Shipped — JavaScript named imports, `fun`.
+**Maturity.** Shipped — JavaScript named imports, `quill`.
 
-**Tried by.** JavaScript/TypeScript, `fun` (closed 2026-09-28, `ab95ccb` + `71bd812`).
+**Tried by.** JavaScript/TypeScript, `quill` (closed 2026-09-28, `ab95ccb` + `71bd812`).
 
 **Source.** "r/ProgrammingLanguages on Import Mechanisms", score 80, 30 comments, 2023-04,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1340z3r/rprogramminglanguages_on_import_mechanisms/
@@ -265,7 +265,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1340z3r/rprogramminglangu
 50 comments, 2025-05,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1kyaaf2/why_are_some_language_communities_fine_with/
 
-**Bearing on `fun`.** Already has it (named): `open M.{a, b}` and `export M.{a, b}` are
+**Bearing on `quill`.** Already has it (named): `open M.{a, b}` and `export M.{a, b}` are
 **one shared form, symmetric in both directions** (`Syntax.Open`/`Binding.Open` gained `Names`,
 matching `DeclExport`);
 only what is named arrives, unknown names are an error in the export form's shape, opens stay
@@ -313,7 +313,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1kyaaf2/why_are_some_lang
 · "r/ProgrammingLanguages on Import Mechanisms", score 80, 30 comments, 2023-04,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1340z3r/rprogramminglanguages_on_import_mechanisms/
 
-**Bearing on `fun`.** Has it differently, deliberately: bare names never arrive by a glob — an
+**Bearing on `quill`.** Has it differently, deliberately: bare names never arrive by a glob — an
 **open** is a binding whose open-choice resolution is *deferred to elaboration* (scope sets pick
 the candidate opens; the elaborator takes the first open that has the member), a dotted path is
 plain **member** access carrying no scopes, and the **strict phase rule** gives an imported unit
@@ -357,7 +357,7 @@ language that only hinder extensibility … and that can be circumvented via ref
 retrieved corpus: nobody weighs constructors-hidden against representation-freedom *at a module
 boundary*, and nobody defends the two-mode inline-`pub`/`sig` rule.
 
-**Tried by.** OCaml, SML `[general knowledge, not from corpus]`; `fun` has the design written in
+**Tried by.** OCaml, SML `[general knowledge, not from corpus]`; `quill` has the design written in
 `topics/private-type-visibility.md` and the decision *not* taken.
 
 **Source.** "Modules: Overcoming Stockholm and Duning-Kruger" (opacity as a named constraint),
@@ -368,7 +368,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/15wdiqh/definitive_text_o
 · (comment above) "What do you dislike about class inheritance?", score 58, 97 comments, 2020-06,
 https://www.reddit.com/r/ProgrammingLanguages/comments/he2wmh/what_do_you_dislike_about_class_inheritance/
 
-**Bearing on `fun`.** Open/undecided — `docs/wayfinder/tickets/design-private-type-visibility-model.md`
+**Bearing on `quill`.** Open/undecided — `docs/wayfinder/tickets/design-private-type-visibility-model.md`
 is open with `Resolution: _Unresolved._`; its topic doc
 (`topics/private-type-visibility.md`) already sketches the OCaml/SML model with
 `open_module_value` as the single access-control gate, but the map keeps it in the grilling queue,
@@ -411,8 +411,8 @@ nobody in this corpus ships a principled white-box door.
 2021-09,
 https://www.reddit.com/r/ProgrammingLanguages/comments/pxytj7/why_dont_more_languages_have_firstclass_testing/
 
-**Bearing on `fun`.** Genuinely new to the project — nothing in the map or tickets proposes test
-affordances; `fun`'s conformance suite drives whole programs against `.expect` pairs and never
+**Bearing on `quill`.** Genuinely new to the project — nothing in the map or tickets proposes test
+affordances; `quill`'s conformance suite drives whole programs against `.expect` pairs and never
 needs to reach inside a module, which is *why* the question has not come up. It will come up when
 a library wants white-box tests.
 
@@ -452,7 +452,7 @@ but a method for code reuse and polymorphism"), and a reply that checked the Sim
 story against the 1968 source document finds even it "was still a made up/contrived problem" —
 the historic example the post leans on does not carry it.
 
-**Tried by.** Go; Pipefish (hobby — data point about interest, not viability); `fun` takes the
+**Tried by.** Go; Pipefish (hobby — data point about interest, not viability); `quill` takes the
 other side.
 
 **Source.** "Inheritance and interfaces: why a giraffe is not a fish", score 38, 58 comments,
@@ -461,7 +461,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1rnm7xi/inheritance_and_i
 · "What do you dislike about class inheritance?", score 58, 97 comments, 2020-06,
 https://www.reddit.com/r/ProgrammingLanguages/comments/he2wmh/what_do_you_dislike_about_class_inheritance/
 
-**Bearing on `fun`.** Has it differently: `fun`'s traits are **nominal** — a `trait`/`impl`
+**Bearing on `quill`.** Has it differently: `quill`'s traits are **nominal** — a `trait`/`impl`
 declaration pair — carried by **structural dictionary evidence** with most-precise-impl-wins.
 Satisfaction is never inferred at the use site; an impl for a type is written somewhere and then
 must be brought into scope (see *where impls live*, below).
@@ -493,7 +493,7 @@ methods", and the C++/C#/Java mistake is conflating generic function declaration
 which makes composition-vs-inheritance the wrong axis (comments on "What do you dislike about
 class inheritance?", 26 of 96 retrieved). Neither position is rebutted in the retrieved set.
 
-**Tried by.** Go; `fun` never grew inheritance. Prior art the comments name that the bodies did
+**Tried by.** Go; `quill` never grew inheritance. Prior art the comments name that the bodies did
 not: *A compositional model for software reuse* (1989) and BETA (design on paper 1975, working
 compiler 1983, shipped 1985) are offered as the real origin of composition-over-inheritance
 (comment on "The Flint Programming Language").
@@ -508,7 +508,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/t6gsi1/abstraction_perfec
 · (comment above) "The Flint Programming Language", score 71, 69 comments, 2026-07,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1usjaxf/the_flint_programming_language/
 
-**Bearing on `fun`.** Already has it (named): no inheritance exists — structs carry fields and
+**Bearing on `quill`.** Already has it (named): no inheritance exists — structs carry fields and
 bindings, traits carry **impls**, and `Self` is *the struct being defined only*, which is the
 rule that stops a self-type from becoming a base class. Delegation maps to ordinary module
 members and `impl`s.
@@ -552,7 +552,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/jdv2s8/i_used_to_categori
 2022-07,
 https://www.reddit.com/r/ProgrammingLanguages/comments/vqx19e/modules_overcoming_stockholm_and_duningkruger/
 
-**Bearing on `fun`.** Has it differently, at a precise seam: a **module** is a first-class value
+**Bearing on `quill`.** Has it differently, at a precise seam: a **module** is a first-class value
 but has *no* methods, `self` or `Self`; a record **struct** has methods and `Self` — the two are
 kept apart on purpose (`struct-as-module.md`: "Modules cannot define methods and cannot refer to
 `self` or `Self`"), which is this thread's collapse refused.
@@ -584,13 +584,13 @@ and "most programmers never notice this, which suggests it works well"; C gives 
 and enums their own tag namespace (`struct foo {…}; foo foo;` is legal); Haskell shares one
 namespace between types and constructors and pays for it — "Lots of newbie Haskell questions on
 StackOverflow stem from misunderstandings due to the shared namespace." And the case *against*
-splitting lands exactly on `fun`'s own premise: "If you ever want to have dependent types … the
+splitting lands exactly on `quill`'s own premise: "If you ever want to have dependent types … the
 distinction between types and terms fades away. In that case, it doesn't make sense to have two
 separate namespaces, since types are values" (comments on "Separating the type and value
 namespaces?", 26 of 39 retrieved).
 
 **Tried by.** Cone (hobby), Java (the third thread's `org.pack.SomeClass.someMethod()` question),
-Common Lisp, C, Haskell, `fun`.
+Common Lisp, C, Haskell, `quill`.
 
 **Source.** "Namespace Games II, the Wreckoning", score 3, 13 comments, 2018-03,
 https://www.reddit.com/r/ProgrammingLanguages/comments/822vaa/namespace_games_ii_the_wreckoning/
@@ -601,7 +601,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/7vj0i2/function_vs_method
 · "Separating the type and value namespaces?", score 40, 38 comments, 2021-03,
 https://www.reddit.com/r/ProgrammingLanguages/comments/m0pki1/separating_the_type_and_value_namespaces/
 
-**Bearing on `fun`.** Has it differently, by a two-phase split rather than several tables:
+**Bearing on `quill`.** Has it differently, by a two-phase split rather than several tables:
 **expansion resolves** (scope sets against the **binder table**, which has no order and no
 width) and **elaboration locates** (the **Context**, where position is meaning). No name is ever
 found by its spelling alone, and the binder table's one namespace carries values, macros and
@@ -626,7 +626,7 @@ extract distinct from the implementation.
 
 **Maturity.** Shipped — Go packages, Java, C++20 modules.
 
-**Tried by.** Go, Java, C++20; `fun`.
+**Tried by.** Go, Java, C++20; `quill`.
 
 **Source.** "How import works?", score 9, 14 comments, 2022-07,
 https://www.reddit.com/r/Compilers/comments/vx9g1w/how_import_works/
@@ -638,7 +638,7 @@ https://www.reddit.com/r/Compilers/comments/1gljmf9/whats_the_deal_with_the_glob
 *(none of these three was among the 20 threads fetched for comment trees — their bodies are the
 evidence)*
 
-**Bearing on `fun`.** Already has it (named): a unit **elaborates once against the base
+**Bearing on `quill`.** Already has it (named): a unit **elaborates once against the base
 context** (atom types, primitives, `stdlib` bound as a name), so its meaning never depends on
 what the importer had in scope; a cached term must be **base-anchored**, and moving a *value* is
 sound precisely because a value carries its environment — the rule that separates importing a
@@ -671,7 +671,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1v7jfsg/adding_cyclic_mod
 44 comments, 2022-07,
 https://www.reddit.com/r/ProgrammingLanguages/comments/vqx19e/modules_overcoming_stockholm_and_duningkruger/
 
-**Bearing on `fun`.** Decided, the other way: **import cycles are an error**, reported by the
+**Bearing on `quill`.** Decided, the other way: **import cycles are an error**, reported by the
 syntax load that reaches them first (STATUS; the circular-syntax tests use real import cycles).
 Recursion lives at the *binding* level — `rec` groups and `type … and …` chains tie their own
 knot — so a cycle is solved by moving a declaration down a level, not by letting units loop.
@@ -695,9 +695,9 @@ at run time; the file boundary decides what is separately compiled, so a too-fin
 file layout is a compile-time decision the language has opinions about ("in D and Rust, a module
 is no larger than a source file, and that creates some interesting stitching challenges").
 
-**Maturity.** Shipped — Java/Go compilation units; `fun`'s split is the explicit version.
+**Maturity.** Shipped — Java/Go compilation units; `quill`'s split is the explicit version.
 
-**Tried by.** Java, Go, Rust (units = files), `fun`.
+**Tried by.** Java, Go, Rust (units = files), `quill`.
 
 **Source.** "Modules: Overcoming Stockholm and Duning-Kruger", score 84, 44 comments, 2022-07,
 https://www.reddit.com/r/ProgrammingLanguages/comments/vqx19e/modules_overcoming_stockholm_and_duningkruger/
@@ -706,7 +706,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1r6fhq8/whats_the_8020_of
 · "Definitive text on \"module system(s)\"?", score 30, 42 comments, 2023-08,
 https://www.reddit.com/r/ProgrammingLanguages/comments/15wdiqh/definitive_text_on_module_systems/
 
-**Bearing on `fun`.** Already has it (named), and `CONTEXT.md` gives the reason in one line: a
+**Bearing on `quill`.** Already has it (named), and `CONTEXT.md` gives the reason in one line: a
 **compilation unit** "is not a module expression and not first-class: it has no context to
 capture, so it is the one thing that can sensibly be required to be base-anchored."
 
@@ -739,7 +739,7 @@ https://www.reddit.com/r/Compilers/comments/hqhmg4/what_is_the_history_of_increm
 · "What I wish compiler books would cover", score 146, 36 comments, 2020-04,
 https://www.reddit.com/r/ProgrammingLanguages/comments/gavu8z/what_i_wish_compiler_books_would_cover/
 
-**Bearing on `fun`.** Fog, and named: **content-addressed codebase** is the fun-side fog item —
+**Bearing on `quill`.** Fog, and named: **content-addressed codebase** is the quill-side fog item —
 today the `Loader` caches per-process and keyed by file path, and the interleaved driver makes a
 cache key a *(definition, context)* pair rather than one hash. Incremental builds are not a
 decided feature anywhere in the map.
@@ -767,7 +767,7 @@ differently.
 
 **Maturity.** Shipped — Unison, in production use.
 
-**Tried by.** Unison; `fun` has the fog item with two named obstacles.
+**Tried by.** Unison; `quill` has the fog item with two named obstacles.
 
 **Source.** "r/ProgrammingLanguages on Import Mechanisms", score 80, 30 comments, 2023-04,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1340z3r/rprogramminglanguages_on_import_mechanisms/
@@ -775,8 +775,8 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1340z3r/rprogramminglangu
 2023-02,
 https://www.reddit.com/r/ProgrammingLanguages/comments/10s6rj7/package_management_and_distribution_of_your/
 
-**Bearing on `fun`.** Fog item (content-addressed codebase) with the two obstacles already
-written down: `fun`'s scope sets are per-run integer sets, so a hash needs a scope-normal form;
+**Bearing on `quill`.** Fog item (content-addressed codebase) with the two obstacles already
+written down: `quill`'s scope sets are per-run integer sets, so a hash needs a scope-normal form;
 and the interleaved driver keys work on *(definition, context)*, not a term alone. The map also
 records the order — the `std` restructure and the bootstrap↔compiler interface come first and
 would have to be hash-shaped.
@@ -831,7 +831,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1t3lez5/par_has_a_new_hom
 · "Programming for the second half of the 21 century", score 37, 14 comments, 2024-04,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1bsxpcb/programming_for_the_second_half_of_the_21_century/
 
-**Bearing on `fun`.** Genuinely new to the project — no ticket or fog item covers distribution
+**Bearing on `quill`.** Genuinely new to the project — no ticket or fog item covers distribution
 or versioning. The nearest recorded boundary is *internal*: `declare-bootstrap-compiler-interface-once`
 plus `prelude-abi-remaining-spellings` fix the bootstrap↔compiler interface's spellings — an ABI
 between `std/` and the compiler, not a package story.
@@ -858,7 +858,7 @@ and mangling policy pinned to a platform.
 **Maturity.** Shipped — both horns are in production languages (Umka for the wrapper route; the
 corpus assumes full FFIs exist everywhere).
 
-**Tried by.** Umka (wrappers), Zig/Lua-style host registration; `fun` has neither.
+**Tried by.** Umka (wrappers), Zig/Lua-style host registration; `quill` has neither.
 
 **Source.** "Umka interpreter now automatically links native shared libraries that implement
 external functions", score 24, 1 comment, 2020-12,
@@ -876,9 +876,9 @@ only FFI-adjacent comment anywhere in the 520 retrieved is a package-thread asid
 interop and interaction with DLLs needs to be done better", permalink under *Package management*
 below)*
 
-**Bearing on `fun`.** Fog, and named: **the library-vs-compiler-machinery boundary (UFCS, FFI)**
+**Bearing on `quill`.** Fog, and named: **the library-vs-compiler-machinery boundary (UFCS, FFI)**
 — "UFCS and FFI are desirable but should not drive the prototype agenda now." What exists is the
-**Primitive** floor (a name, a type, a reducer, a failure behaviour), which is `fun`'s current
+**Primitive** floor (a name, a type, a reducer, a failure behaviour), which is `quill`'s current
 answer to "how does foreign capability enter the language".
 
 ### Name mangling as a linker policy — and the cost of overloads on it
@@ -909,7 +909,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/rt3bm9/alternatives_to_na
 · "Function vs. method namespaces", score 10, 27 comments, 2018-02,
 https://www.reddit.com/r/ProgrammingLanguages/comments/7vj0i2/function_vs_method_namespaces/
 
-**Bearing on `fun`.** Not reached — `fun` compiles to Core terms and has no linker, so mangling
+**Bearing on `quill`.** Not reached — `quill` compiles to Core terms and has no linker, so mangling
 is genuinely new to the project; the nearest concept is a **Resolved name** (`x#n`, unwritable in
 source), which is hygiene bookkeeping, not a link symbol. If a native backend ever exists this
 entry becomes a ticket.
@@ -920,7 +920,7 @@ entry becomes a ticket.
 instance search happen is the types axis*. Two answers: impls are **global** once a crate is
 loaded (Haskell/Rust: same answer no matter when or where the lookup happens — what makes
 transitive dependencies and ordered collections sound), or impls are **scoped** — found only
-through what the unit opened (Agda, modular implicits, `fun`). A third: impls travel *with the
+through what the unit opened (Agda, modular implicits, `quill`). A third: impls travel *with the
 type*, orphans explicit (Scala's companion/implicit scope).
 
 **Buys.** Scoped resolution keeps conflicting impls from ever meeting (canonicity), and it is the
@@ -933,21 +933,21 @@ truly understand how a piece of code works, you have to clearly remember which i
 these overloaded functions are being used" — scoped resolution's standing debuggability cost. The
 global side's own critics note global uniqueness is "inherently non-modular", with newtype
 wrappers as the ad-hoc workaround. The fetched comments argue the *pro*-global side in its own
-terms, and it has to be read as a trade, not as a correction to `fun`: "Say you have modularized
+terms, and it has to be read as a trade, not as a correction to `quill`: "Say you have modularized
 ordering … If you can have multiple different ordering modules floating around, how do you make
 sure you can't accidentally confuse your compiler (and yourself) by trying to compare data with
 inconsistent orderings? That's a coherence problem" (comment on "Modules: Overcoming Stockholm
 and Duning-Kruger") — without one answer per type, an ordering escapes its owner and two of them
-meet. `fun`'s recorded reason for rejecting global coherence (it is unavailable when modules are
+meet. `quill`'s recorded reason for rejecting global coherence (it is unavailable when modules are
 values) answers *why the trade cannot be had here*, not *whether the trade is worth having*;
 the hazard that comment exposes is the one already written down in Bearing below.
 
-**Maturity.** Contested — a live disagreement; the *fun*-shaped design point (lexical scope plus
+**Maturity.** Contested — a live disagreement; the *quill*-shaped design point (lexical scope plus
 named instances) is what modular implicits, PureScript and Idris shipped, per
 `topics/impl-visibility.md`'s survey.
 
 **Tried by.** Haskell, Rust (global); Agda, OCaml modular implicits, PureScript, Idris (scoped
-with naming); Scala (option B); `fun` (scoped, named impls). The comments name the reading that
+with naming); Scala (option B); `quill` (scoped, named impls). The comments name the reading that
 decides it: the modular implicits paper as "a really good reference on the (in)compatibilities of
 modules and typeclasses", and E. Kmett's "Typeclasses vs The World" talk (comment on "Modules:
 Overcoming Stockholm and Duning-Kruger").
@@ -961,7 +961,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1rnm7xi/inheritance_and_i
 44 comments, 2022-07,
 https://www.reddit.com/r/ProgrammingLanguages/comments/vqx19e/modules_overcoming_stockholm_and_duningkruger/
 
-**Bearing on `fun`.** Decided and rejected, both ways: **global coherence for impls is rejected**
+**Bearing on `quill`.** Decided and rejected, both ways: **global coherence for impls is rejected**
 ("unavailable when modules are values"); **impls arrive via `open`, with named impls first** — a
 named impl is a compile-time handle, so erasure and specialization stay possible while the escape
 hatch exists; the mandatory-open tax the analysis measured is what `open M.{a, b}` then closed.
@@ -1004,8 +1004,8 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/zyvws6/the_expression_pro
 · (comment above) "What do you dislike about class inheritance?", score 58, 97 comments, 2020-06,
 https://www.reddit.com/r/ProgrammingLanguages/comments/he2wmh/what_do_you_dislike_about_class_inheritance/
 
-**Bearing on `fun`.** Has it differently: the operation axis is answered by **type-case over open
-`Type`** (a decided `fun` feature, not a module question) and the type axis by adding an **impl**
+**Bearing on `quill`.** Has it differently: the operation axis is answered by **type-case over open
+`Type`** (a decided `quill` feature, not a module question) and the type axis by adding an **impl**
 — which, being scoped, must then be brought in by an `open`, so third-party extension of an
 existing type is still a module-system act. Note the boundary: this entry is about *where code
 lives*, not about type-case's semantics.
@@ -1040,7 +1040,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1i91i3c/compile_time_conv
 · "Compiling interfaces without a vtable?", score 6, 10 comments, 2021-04,
 https://www.reddit.com/r/ProgrammingLanguages/comments/miisi3/compiling_interfaces_without_a_vtable/
 
-**Bearing on `fun`.** Undecided and unasked: `fun` records that compile-time specialization and
+**Bearing on `quill`.** Undecided and unasked: `quill` records that compile-time specialization and
 dictionary erasure are *optimizations, not initial semantics* (`topics/traits.md` via
 `impl-visibility.md`), so the semantics never depend on a whole-program pass — but whether one
 unit's elaboration may assume another's impl set is nowhere in the map. It would collide with
@@ -1071,16 +1071,16 @@ dispatch machinery, not with how often it is used.
 named in the retrieved body); the *recommendation* to cap at two arguments is analysis, not a
 spec.
 
-**Tried by.** The six languages of the 2009 study; `fun` takes a different route entirely.
+**Tried by.** The six languages of the 2009 study; `quill` takes a different route entirely.
 
 **Source.** "Study of the actual use of multiple dispatch", score 34, 13 comments, 2023-11,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1835ekm/study_of_the_actual_use_of_multiple_dispatch/
 · "Ad-hoc polymorphism is not worth it", score 56, 61 comments, 2024-12,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1hg4r9v/adhoc_polymorphism_is_not_worth_it/
 
-**Bearing on `fun`.** Has it differently: a **trait op resolves from scope at elaboration** — the
+**Bearing on `quill`.** Has it differently: a **trait op resolves from scope at elaboration** — the
 innermost impl, most-precise-impl-wins, resolved against the *use's argument types* — and there
-is **no run-time dispatch at all**: evidence is dictionary data the compiler erases. So `fun`
+is **no run-time dispatch at all**: evidence is dictionary data the compiler erases. So `quill`
 pays the multi-argument *selection* cost at elaboration and never at run time, which is a third
 position between single-dispatch OO and Julia-style multiple dispatch.
 
@@ -1146,7 +1146,7 @@ namespaces?*. The rest are read from bodies only.
   naming standards and tooling, a Dart designer measuring 90% unqualified and blaming the
   static/dynamic split, and a reply disputing the thread's premise about Python; global vs
   scoped impl coherence — the ordering-module argument is the pro-global case in the corpus's
-  own words, and `fun` has ruled the other way with its reason recorded; privacy vs testability —
+  own words, and `quill` has ruled the other way with its reason recorded; privacy vs testability —
   "supporting poor design on a language level" against "a lot of what you call good design is
   only good *only* because it facilitates unit testing"; composition vs inheritance — ECOOP 89
   and CLOS quoted against the thread's own conclusion; and the giraffe thread's framing attacked
@@ -1172,7 +1172,7 @@ namespaces?*. The rest are read from bodies only.
   and Separate Compilation*; Pierce's modules slides and *TAPL*; Dreyer and Rossberg's MixML;
   Mark Jones's parameterised signatures); the modular implicits paper and Kmett's *Typeclasses
   vs The World* (both already pointed at from `topics/impl-visibility.md`); a production
-  incremental-compilation write-up (Zig's talk, not its corpus body); and — for `fun` itself — a
+  incremental-compilation write-up (Zig's talk, not its corpus body); and — for `quill` itself — a
   ruling on the open `design-private-type-visibility-model` ticket. The comments moved that ticket
   forward (they pin "opacity" to opaque-vs-transparent ascription and name the languages that
   only seal data types) but did not settle it: nobody weighed constructors-hidden against
@@ -1193,7 +1193,7 @@ namespaces?*. The rest are read from bodies only.
   define the term (opaque vs transparent ascription, hiding type equalities including aliases),
   name who lacks it (Haskell, Rust, Swift — data types only), and state what it buys ("like
   newtypes"); the inheritance thread argues opacity *replaces* access modifiers. What the corpus
-  still does not contain is an argument about `fun`'s two-mode rule.
+  still does not contain is an argument about `quill`'s two-mode rule.
 - **Corrected: the Graydon gloss.** "Its 'coherence' reading is software-coupling, not
   instance-uniqueness" remains true of the *post*, and the retrieved comments repair it from two
   directions: the ML reader's row-by-row gloss (generativity, opacity, stratification — its own
@@ -1201,9 +1201,9 @@ namespaces?*. The rest are read from bodies only.
   instance-uniqueness reading ("multiple different ordering modules floating around … compare
   data with inconsistent orderings"). The checklist no longer rests on one reader — but it still
   rests on readers, not on Graydon.
-- **Not corrected, deliberately: global coherence.** No comment argues that `fun` is wrong to
+- **Not corrected, deliberately: global coherence.** No comment argues that `quill` is wrong to
   reject it. The pro-coherence comment (ordering modules) is recorded above as a contested
-  trade-off with `fun`'s stated reason — global coherence is unavailable when modules are values —
+  trade-off with `quill`'s stated reason — global coherence is unavailable when modules are values —
   not as a fix to a decision.
 - **Unresolved with this material.** The FFI, tagged-union/vtable, cyclic-C and name-resolution
   threads' own replies could not be read: their trees were never fetched, and nothing in the 520

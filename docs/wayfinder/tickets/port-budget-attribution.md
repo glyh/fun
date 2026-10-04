@@ -25,7 +25,7 @@ blocked_by:
 > transcription was not. The corrected program — the prototype's own, from
 > `test_core.ml:2051` — and what each runner now prints:
 >
-> ```fun
+> ```quill
 > { macro spin(_) { rec loop : I64 -> I64 = fn(n) { loop(n) }; loop(0) };
 >   macro keep(d : List(Decl)) : List(Decl) { Syntax.expand_decls(d) };
 >   M = module { keep({ pub x = spin(0) }) };
@@ -66,7 +66,7 @@ same day — and the ruling is better than either option that was put to them.
 
 ## The divergence it started from
 
-```fun
+```quill
 { macro spin(_) { rec loop : I64 -> I64 = fn(n) { loop(n) }; loop(0) };
   macro keep(d : List(Decl)) : List(Decl) { Syntax.expand_decls(d) };
   M = module { keep({ pub x = spin(0) }) };
@@ -78,7 +78,7 @@ same day — and the ruling is better than either option that was put to them.
 | OCaml | `spin#420` — the innermost application, the one whose body overran |
 | port | `keep` — the outermost request |
 
-Cause: `Budget.MacroApplication` (`dotnet/src/Fun.Compiler/Budget.cs:57`) uses the application
+Cause: `Budget.MacroApplication` (`dotnet/src/Quill.Compiler/Budget.cs:57`) uses the application
 name only as the depth-0 request's demand, so a nested application never reaches the message,
 while the prototype's `Eval_budget` raises the innermost `application.exceeded`.
 
@@ -140,7 +140,7 @@ frame content, scope, truncation — and they are asked one at a time, in the or
 
 ## Reading
 
-- `dotnet/src/Fun.Compiler/Budget.cs:57` (`MacroApplication`), `BudgetTests.cs`
+- `dotnet/src/Quill.Compiler/Budget.cs:57` (`MacroApplication`), `BudgetTests.cs`
 - the prototype's `Eval_budget` and `application.exceeded`
 - [the observable budget cases](port-budget-observable-cases.md) — what landed, and why this
   one could not

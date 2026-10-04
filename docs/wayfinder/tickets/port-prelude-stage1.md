@@ -15,7 +15,7 @@ Wave 3 fork. Follow the porting conventions in
 
 ## Scope
 
-- Elaborate `dotnet/std/stage1.fun` (the port's copy of the prelude's stage 1:
+- Elaborate `dotnet/std/stage1.qll` (the port's copy of the prelude's stage 1:
   `Bool`, `if`, `i64_to_bool`, `Option`, `List`, the `Syntax` module with its
   enums, pattern synonyms and builders) as a compilation unit against the base
   context, once per process, and bind it in the base context as `stdlib` (glossary
@@ -51,21 +51,21 @@ stage 2's operators; report how many turn green and what blocks the rest.
 ## Resolution (2026-09-17)
 
 Merged from `port/prelude-stage1` (`907c147`, `1cd820e`, `ad6594e`, `dd57520`,
-`c613fb6`, merges `5a040e4`, `4790085`). `dotnet/std/*.fun` is embedded in
-`Fun.Compiler`; `Prelude.cs` elaborates stage 1 once per process against the
+`c613fb6`, merges `5a040e4`, `4790085`). `dotnet/std/*.qll` is embedded in
+`Quill.Compiler`; `Prelude.cs` elaborates stage 1 once per process against the
 builtins (`BuiltinContext`); `BaseContext` binds it as `stdlib` (bound, not
 opened); `import "std"` loads that value and its syntax exports; each base context
 seeds its metas from the prelude's (`MetaContext.SeedFrom`) so meta ids in prelude
 values mean the same in every program; a program is wrapped in a real
 `open (import "std")`. Stage 1 elaborated after two port fixes (without editing
-`stage1.fun`): `IsTypeLike` now covers nominals, effects, trait dictionaries, ref
+`stage1.qll`): `IsTypeLike` now covers nominals, effects, trait dictionaries, ref
 types and the row type; a meta can solve to a struct type (constructor fields).
 Let-generalisation is ported (`Elaborator.Generalise.cs`). The renaming lift
 survived. 87 cases newly pass (75 through the open of std, each error case checked
 for its message; 2 through let-generalisation; 7 now genuine "unbound variable"
 errors). C# 334/672; xUnit 131.
 
-**Driver rules now:** stage 2's public names are read from `stage2.fun`; a missing
+**Driver rules now:** stage 2's public names are read from `stage2.qll`; a missing
 name is "not ported yet" only if stage 2 publishes it, otherwise unbound; an
 enforest error is "not ported yet" only in a program whose tokens spell a stage-2
 name, otherwise a real error (`PreludeTests` pins both). The token rule is a

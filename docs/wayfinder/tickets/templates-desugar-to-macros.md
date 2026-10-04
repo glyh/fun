@@ -1,6 +1,6 @@
 ---
 title: Templates desugar to macros
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -84,7 +84,7 @@ Blocker 1 is M7's arrangement (grilled, see its ticket). Written in the
 2. **Nested holes resolve lexically.** `$name` refers to the nearest binder of
    `name` — a template rule's capture, else a macro parameter. Filling an outer
    quote leaves holes bound inside it untouched:
-   ```fun
+   ```quill
    macro make_adder(base : Expr) : Decl {
      quote { syntax add_base { | add_base $x => $x + $base }; }
    }
@@ -96,7 +96,7 @@ Blocker 1 is M7's arrangement (grilled, see its ticket). Written in the
    until the output places it). A capture `$(x : T)` is the macro parameter
    `(x : T)` it desugars to; macro parameters take the same annotations.
 4. **Templates carry the macro's kind annotation; `multi` is deleted.**
-   ```fun
+   ```quill
    syntax make_inc : Decl { | make_inc => { syntax inc { | inc $x => $x + 1 }; } }
    ```
    desugars one-to-one to `macro make_inc() : Decl { quote { … } }`.
@@ -124,13 +124,13 @@ them. How that looks to a macro:
 1. **A `Block` reflects as a token tree** a macro can read and build — tokens
    and groups, identifier tokens carrying their `Id` with scopes, so the round
    trip stays the identity and hygiene survives:
-   ```fun
+   ```quill
    macro sql(q : Block) : Expr { match (tokens(q)) { | Tok(IdentTok("SELECT")) :: rest => … } }
    ```
 2. **A `Block` hole is a `{…}` in the quoted source**, placeable in any slot
    that takes a brace group, and parsed as that slot expects (statements, module
    items, struct fields):
-   ```fun
+   ```quill
    syntax namespace { | namespace $(n : Id) $(b : Block) => pub $n = module $b };
    syntax lam { | lam ($(x : Id)) $(b : Block) => fn($x) $b };
    ```
@@ -289,7 +289,7 @@ holes). Suite green, 920 tests.
   `{ items }` replacement. As a syntax form's `Decl` capture, the items stay
   unread (`DeclItems`) until spliced. A declaration hole in `quote { … }` now
   takes `Decls` and splices them in place of its item (it took one `Decl`):
-  ```fun
+  ```quill
   macro twice_decls(d : Decl) : Decl { quote { $d; $d } };
   twice_decls({ x = 1; y = 2 })
   ```

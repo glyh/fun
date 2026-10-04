@@ -1,6 +1,6 @@
 ---
 title: A match whose scrutinee is a closure crashes the evaluator
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -14,7 +14,7 @@ blocked_by:
 
 ## Defect
 
-```fun
+```quill
 { h = match (fn(u : Unit) { 1 }) { x => x }; h(()) }
 // error: EvalError("if condition is not a boolean or stuck term")
 ```

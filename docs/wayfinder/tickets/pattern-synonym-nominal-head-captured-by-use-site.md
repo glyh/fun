@@ -62,7 +62,7 @@ unprobed when that ticket closed on prototype parity; the probe now exists and i
 Declare a pattern synonym whose right-hand side is a type from a generative module, then use it
 from a scope with **one more name in it**:
 
-```fun
+```quill
 { SymbolTable = fn(u : Unit) { module {
     table = ref("");
     pub type Symbol = Sym(String);
@@ -133,8 +133,8 @@ specific obstacle to get past rather than a reason to keep parity.
 
 - [the sealed-nominal head](port-pattern-synonym-over-sealed-nominal-head.md) — the closed ticket,
   its recorded deviation, and the four cases that pass today because they all sit at top level
-- `dotnet/src/Fun.Compiler/Nbe.Generative.cs` — `MatchesNominalHead` / `SameInstance`, the
+- `dotnet/src/Quill.Compiler/Nbe.Generative.cs` — `MatchesNominalHead` / `SameInstance`, the
   comparison that evaluates the head term, under the match's environment as `nbe.ml:716` does
-- `dotnet/src/Fun.Compiler/Elaborator.Patterns.cs`, `Core.Patterns.cs` (`NominalHead`, and what it
+- `dotnet/src/Quill.Compiler/Elaborator.Patterns.cs`, `Core.Patterns.cs` (`NominalHead`, and what it
   carries: a term plus, today, no environment)
 - `lib/backend/interp/nbe.ml:716` — the prototype's `same_instance mc env …`, the same defect

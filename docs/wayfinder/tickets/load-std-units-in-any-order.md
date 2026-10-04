@@ -1,6 +1,6 @@
 ---
 title: Load std units in any order, pinning only the bootstrap
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: open
@@ -12,7 +12,7 @@ blocked_by: []
 
 ## The complaint, measured
 
-Adding `std/functor` required editing `Prelude.Order` (`src/Fun.Compiler/Prelude.cs:29`), a
+Adding `std/functor` required editing `Prelude.Order` (`src/Quill.Compiler/Prelude.cs:29`), a
 fixed list, lowest first. Without that edit the import fails with
 
 ```
@@ -20,7 +20,7 @@ ELAB import not found: "std/functor"
 ```
 
 **even though the source is embedded and the build is clean** — `strings` on
-`Fun.Compiler.dll` lists `std/functor.fun` alongside `std/bootstrap.fun` and the rest. The
+`Quill.Compiler.dll` lists `std/functor.qll` alongside `std/bootstrap.qll` and the rest. The
 resource is there; the loader simply never offers the path, because `Prelude.Of` answers
 only for paths that array names.
 
@@ -70,7 +70,7 @@ removes the *position* question rather than only the editing.
    transitively" — but `Loader` takes a *list* and `Stdlib` is its **last** element. In a
    DAG, "last" is undefined: a unit may import two, neither after the other.
 2. **What is `Std` inside a std unit?** Today it is whatever the array happened to put
-   directly below. Nothing in `std/` appears to use it, and `stage2.fun` says only the
+   directly below. Nothing in `std/` appears to use it, and `stage2.qll` says only the
    topmost unit is a program's face — so the ticket should rule whether it becomes the
    bootstrap, or disappears for std units. A ruling, not a discovery.
 3. **Cycles.** The current order cannot express one, and `Expanded` refuses them loudly
@@ -79,7 +79,7 @@ removes the *position* question rather than only the editing.
 4. **Metas seeding under a DAG.** `SeedFrom(prelude[^1].Metas)` assumes a topmost unit.
    Which unit's metas seed which, when the graph branches?
 5. **The program's import rule.** "Nothing below `std` is importable by a program"
-   (`stage2.fun`) is a separate visibility rule and must not fall out of this change by
+   (`stage2.qll`) is a separate visibility rule and must not fall out of this change by
    accident.
 
 ## Sharpens when

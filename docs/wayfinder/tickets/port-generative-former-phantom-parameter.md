@@ -18,7 +18,7 @@ blocked_by:
 > half, which is the branch that makes this the first today to touch `lib/`. **The ruling's own
 > program is refused by both, and at the declaration:**
 >
-> ```fun
+> ```quill
 > { Mk = fn(u : Unit) { module {
 >     table = ref(0);
 >     pub type Box(A) = Bx;
@@ -83,7 +83,7 @@ prototype's phantom parameter, or keep the port's refusal) with a third that nei
 
 The asymmetry that made this a gap:
 
-```fun
+```quill
 { Mk = fn(u : Unit) { module {
     table = ref(0);
     pub type Box(A) = Bx;
@@ -136,7 +136,7 @@ struct type) without special-casing the surface form.
 - **A parameter is "used" iff it occurs in the former's body** — the desugared body, i.e.
   after the `type` macro has run (`rec Box = fn(A : Type) { … }`), not the surface spelling.
   The check reads the elaborated former, so no macro can hide an unused parameter.
-- **Checked in the prelude too.** Checked as of the ruling: `dotnet/std/stage{1,2}.fun` declares
+- **Checked in the prelude too.** Checked as of the ruling: `dotnet/std/stage{1,2}.qll` declares
   no former with an unused parameter (`Option(A)` and `List(A)` both use `A`; the only `fn[…]`
   binders in stage 2 are the `(==)`/`(!=)` functions), so the prelude must stay green. If it
   does not, that is a finding to report, not a reason to weaken the rule.
@@ -184,7 +184,7 @@ is in it right now, and this ticket's guard lives in the same file. **Queued beh
   section 2 is this ticket's evidence, and its section 1 is the file-sharing blocker
 - [the parametric nominal in a generative module](port-generative-former-nominal.md) —
   `GenerativeNominal(Label, NumParams)`, `NominalHeadOf`, `Seal`
-- `dotnet/src/Fun.Compiler/Elaborator.Generative.cs` — the `NumParams > Captures.Length` guard
+- `dotnet/src/Quill.Compiler/Elaborator.Generative.cs` — the `NumParams > Captures.Length` guard
   that replaced a `Skip(-1)` crash
 - [nominal identity is applicative by purity](nominal-identity-applicative-by-purity.md) —
   footgun 6, the argument this ruling declines to follow

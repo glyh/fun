@@ -1,6 +1,6 @@
 ---
 title: Reflect Match in the Expr macro ADT
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed
@@ -18,10 +18,10 @@ blocked_by:
 > design below was implemented against the port and **not** the `macro_eval.ml` this ticket was
 > written for:
 >
-> - `RawMatch` and `Branch` are in the reflected `Expr` ADT — `std/stage1.fun:32`, and the
+> - `RawMatch` and `Branch` are in the reflected `Expr` ADT — `std/stage1.qll:32`, and the
 >   `Branch` sum is already the forward-compatible `ValueBranch | EffectBranch` shape decision 2
 >   asked for (it went further than "value branches only").
-> - Both directions round-trip: reflect at `src/Fun.Compiler/Reflection.cs:268` (+ `BranchVal`
+> - Both directions round-trip: reflect at `src/Quill.Compiler/Reflection.cs:268` (+ `BranchVal`
 >   at `:353`, both branch kinds) and read at `:739` (+ `ReadBranch` at `:868`).
 > - The patterns it needed are reflected too (`RawPatWild/Bind/Con/Atom/Prod/Or/Record/StructType/Type`).
 > - The follow-on it was meant to unblock is already true: `if` is a prelude form, not an
@@ -76,7 +76,7 @@ prelude-macro `if`** and other library-defined control forms.
    `List(Pattern * Expr)` tuple for named clarity and forward-compatibility to a
    `ValueBranch | EffectBranch` sum. **Blocked by a language gap:** `Expr` and
    `Branch` are mutually recursive (`RawMatch` carries `List(Branch)`; `Branch`
-   carries an `Expr` body), and `fun` has no mutually-recursive nominal types today
+   carries an `Expr` body), and `quill` has no mutually-recursive nominal types today
    — see **[Mutually-recursive nominal type declarations](mutually-recursive-nominal-types.md)**,
    which this ticket is now blocked on. (Structural fallbacks `List(Pattern * Expr)`
    or `List(struct pattern: Pattern; body: Expr end)` both verified to work and would

@@ -63,7 +63,7 @@ when its *struct* half landed (2026-09-25). What remains is the half that needs 
 
 ## The program, and both runners (integrator, verified on the `747/0` base)
 
-```fun
+```quill
 { SymbolTable = fn(u : Unit) { module {
     table = ref("");
     pub type Symbol = Sym(String);

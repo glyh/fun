@@ -1,8 +1,8 @@
-# Formalized Semantics for `fun` — Handover Context
+# Formalized Semantics for `quill` — Handover Context
 
-## What is `fun`
+## What is `quill`
 
-`fun` is an experimental dependently-typed programming language compiler/interpreter, currently implemented in OCaml. The core is `core_tt`: a dependently typed kernel with bidirectional elaboration, normalization by evaluation (NBE), implicit arguments, nominal ADTs, structural records/modules, pattern matching, traits, algebraic effects, and mutable references.
+`quill` is an experimental dependently-typed programming language compiler/interpreter, currently implemented in OCaml. The core is `core_tt`: a dependently typed kernel with bidirectional elaboration, normalization by evaluation (NBE), implicit arguments, nominal ADTs, structural records/modules, pattern matching, traits, algebraic effects, and mutable references.
 
 **Pipeline:**
 ```
@@ -25,7 +25,7 @@ core_tt_kernel → core_tt_syntax → core_tt_expand → core_tt_loader → core
                               core_tt_match ───────────────────────┘
 ```
 
-**Roadmap status (now the direction [map](../fun-design-map.md)):**
+**Roadmap status (now the direction [map](../quill-design-map.md)):**
 1. Regression coverage — ongoing
 2. Type-case/generic programming — complete
 3. Traits/ad-hoc polymorphism — mostly complete
@@ -174,8 +174,8 @@ Mismatch types:
 ## Provenance
 
 This proposal originated as a standalone handover note (drafted in a separate
-`fun` worktree). It is preserved here as a fog-stage direction; whether and when
-to pursue it hangs on the [CLR/C# rewrite shape](../fun-design-map.md#fog).
+`quill` worktree). It is preserved here as a fog-stage direction; whether and when
+to pursue it hangs on the [CLR/C# rewrite shape](../quill-design-map.md#fog).
 
 ## Key Files to Reference
 
@@ -187,7 +187,7 @@ to pursue it hangs on the [CLR/C# rewrite shape](../fun-design-map.md#fog).
 - `lib/semantic/typecheck/unify.ml` — structural unification
 - `lib/semantic/typecheck/elab_ctx.ml` — elaboration context
 - `CLAUDE.md` — project conventions, common bugs, style guide
-- [direction map](../fun-design-map.md) — decisions, open tickets, and fog (incl. the C# rewrite)
+- [direction map](../quill-design-map.md) — decisions, open tickets, and fog (incl. the C# rewrite)
 - [`docs/STATUS.md`](../../STATUS.md) — current implementation status
 - `lib/expand/enforest.ml` — parser / enforestation (source of `rest=[]` bugs)
 

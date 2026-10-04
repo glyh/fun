@@ -123,7 +123,7 @@ hbindingi    ::= (pub)? 'rec'? hnamei ':' htypei '=' hexpressioni    (* annotate
 
 Binding keywords are declaration forms only. They appear at the top level, inside `do ... end`, and inside module/struct bodies. There is no `KEYWORD <binding> in <expression>` expression syntax; write a `do` block instead:
 
-```fun
+```quill
 do
   type Option(A) = Some(A) | None
   Option(I64)
@@ -143,7 +143,7 @@ Syntax-extension declarations are provisional Stage 7 forms. An `operator prefix
 
 `sig ... end` is accepted as syntax sugar for a module whose fields are type values. `sig x : T end` means the same effect/trait signature field as `module x = T end`:
 
-```fun
+```quill
 effect State(S) = module
   get = Unit -> S
   put = S -> Unit
@@ -309,7 +309,7 @@ hctori       ::= htype-pathi '.' hnamei                 (* qualified *)
 
 Branch-leading `|` is recommended for readability. A `|` before a branch arrow remains part of the pattern, so unparenthesized or-patterns are accepted:
 
-```fun
+```quill
 match value do
 | 0 | 1 -> 42
 | _ -> 0
@@ -350,13 +350,13 @@ heffect-rowi ::= htypei                                  (* single closed effect
 
 Implicit Pi binders use brackets, not braces:
 
-```fun
+```quill
 [r : EffectRow] -> Unit -> I64 can {IO, Log | r}
 ```
 
 Named explicit Pi binders use parentheses:
 
-```fun
+```quill
 (r : EffectRow) -> Unit -> I64 can {| r}
 ```
 
@@ -382,7 +382,7 @@ All operators are reserved names in the prelude; they work via the enforestation
 
 Provisional user-defined syntax extensions use the same enforestation operator path for the first supported slice:
 
-```fun
+```quill
 operator prefix twice(stx) -> stx
 operator infix ~ 15 left(stx) -> stx
 ```
@@ -393,7 +393,7 @@ operator infix ~ 15 left(stx) -> stx
 
 The semantics of `f(a, b, c)` is `f(a)(b)(c)`, where `f(a)` returns a function.
 
-```fun
+```quill
 # f(a, b, c)   =  f(a)(b)(c)
 # f(a)(b, c)   =  (f(a))(b)(c)     -- same
 # f(a)(b)(c)   ok
@@ -402,7 +402,7 @@ The semantics of `f(a, b, c)` is `f(a)(b)(c)`, where `f(a)` returns a function.
 
 Combined with implicit args:
 
-```fun
+```quill
 # f[A, B](x, y)  =  f[A](x)(y)   -- after implicit application f[A] produces a function
 ```
 
@@ -437,7 +437,7 @@ f()                                # desugars to: f(())
 
 - **Implicit-param interleaving** happens naturally through curried Pi types. A function can return another function that introduces its own implicit params:
 
-```fun
+```quill
 # fn's own params: all implicit [] before explicit ()
 fn[A : Type](x : A) : [B : Type] -> (A -> B) -> B do
   fn(f) -> f(x)

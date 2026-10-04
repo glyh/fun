@@ -1,6 +1,6 @@
 ---
 title: Type-case refinement walks the whole context per branch
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: open
@@ -32,14 +32,14 @@ substitution applied on lookup) instead of rebuilding the context? Measure on
 **The apparatus this ticket names does not exist in the port.**
 `Elab_refine.refine_context_type_var`, the `init_ctx` benchmark and `test_elaborate.exe` are the
 deleted prototype's; there is no benchmark project in the port at all (`test/` holds
-`conformance`, `Fun.Conformance`, `Fun.Tests`). So the question has to be re-derived against
+`conformance`, `Quill.Conformance`, `Quill.Tests`). So the question has to be re-derived against
 `src/` and a measurement built before anyone can answer it — the state
 [enforester improvements](scope-enforester-improvements.md) was left in, for the same reason.
 
 Two things are already known from reading the port, and one of them moves the question:
 
 - **Half answered.** The port does not walk every value the way the ticket describes.
-  `RefineContext` (`src/Fun.Compiler/Elaborator.Patterns.cs:429`) rewrites only the entries whose
+  `RefineContext` (`src/Quill.Compiler/Elaborator.Patterns.cs:429`) rewrites only the entries whose
   `Level` is at or after the refined variable, with the note *"Only the entries that can mention
   the variable are rewritten, each once per branch - the rule, not the prototype's walk over every
   value."* The prototype's "86 % of `init_ctx`" figure therefore does not transfer as written.
@@ -112,7 +112,7 @@ The suite was not run end-to-end (no source touched); probes are single-file `--
 ## Oracle second opinion (2026-09-28) — recon confirmed but too narrow; forkable now
 
 An oracle run (research only; real repo untouched, experiment at `/tmp/orc/repo`, probes at
-`/tmp/orc/*.fun`) verified the recon against the code and the runner.
+`/tmp/orc/*.qll`) verified the recon against the code and the runner.
 
 **Q1 confirmed, line numbers corrected.** The reproducer fails as reported; both controls return
 7. `RefineContext` is at `Elaborator.Patterns.cs:567`, `RefinementTarget` at `:545`, `Substitute`
@@ -123,11 +123,11 @@ passing once rewritten; all five together keep the suite at **947 cases, 0 faile
 
 | Channel | Probe | On `main` | Rewritten |
 |---|---|---|---|
-| `Opened` (the recon's case) | `a.fun` | `VVar` vs `I64` | 7 |
+| `Opened` (the recon's case) | `a.qll` | `VVar` vs `I64` | 7 |
 | `ConstructorEntries` (`open Opt(T)`, then `Some2(x)` / a `Some2(n)` pattern) | `ce1`, `ce2` | mismatch | 1, 8 |
-| `ResumeEntry` (`resume(1) + 1` in a refined branch) | `rs.fun` | mismatch | 8 |
-| `SelfMethods` | `sm.fun` | mismatch | 8 |
-| `Evidence` (bound `[A : Size]` used in the `Char` branch, impl after `f`) | `ev4.fun` | `missing implementation of Size` | 9 |
+| `ResumeEntry` (`resume(1) + 1` in a refined branch) | `rs.qll` | mismatch | 8 |
+| `SelfMethods` | `sm.qll` | mismatch | 8 |
+| `Evidence` (bound `[A : Size]` used in the `Char` branch, impl after `f`) | `ev4.qll` | `missing implementation of Size` | 9 |
 
 - **`SelfMethods` is settled, not unsettled.** The recon's probe failed only because its type
   parameter appeared solely in method types; a field `v : T` routes it through `SelfEntry`.
@@ -157,11 +157,11 @@ index is not justified by any measured number — **defer it; do not close the p
 the recon's evidence.**
 
 **New hole the recon missed — aliases.** Only the matched variable is refined, never the one it
-stands for: `U = T; match (U) { I64 => x + 1 }` fails (`al.fun`), and passes with the bare-variable
+stands for: `U = T; match (U) { I64 => x + 1 }` fails (`al.qll`), and passes with the bare-variable
 target above (suite still green).
 
-**One ruling owed to the user, not to a fork.** `d.fun` (`y : T` written in the branch) and
-`e.fun` (`y : U`): *should a type written inside a branch see the matched variable as the matched
+**One ruling owed to the user, not to a fork.** `d.qll` (`y : T` written in the branch) and
+`e.qll` (`y : U`): *should a type written inside a branch see the matched variable as the matched
 head?* Replacing `T`'s value slot fixes `d` but breaks `core-072`–`077` ("a meta's spine must be
 distinct variables"); `e` fails either way.
 `docs/wayfinder/topics/type-case-generic-programming.md:88` says the checker "may treat the matched
@@ -176,8 +176,8 @@ type variable as equal" — permission, not a decision. Take it to grilling; kee
    `test/conformance/cases/values/`, each proven to fail on `main` first.
 4. `d`/`e` go to a design ruling, not into this fix.
 
-Verify: `dotnet run --project test/Fun.Conformance` (947+ cases, 0 failed) and time
-`/tmp/orc/b_200_r.fun` (≈38 s now, expected <1 s).
+Verify: `dotnet run --project test/Quill.Conformance` (947+ cases, 0 failed) and time
+`/tmp/orc/b_200_r.qll` (≈38 s now, expected <1 s).
 
 **Oracle could not verify:** whether the prototype had the `d`/`e`/alias holes too (it rewrote only
 entry types, so probably); whether rewriting `Evidence` is the *right* fix versus resolving bounds
@@ -186,7 +186,7 @@ implementation.
 
 ### Landed 2026-09-29 — merged to `main`, and what the ticket still owes
 
-Steps 1–3 of the brief are done, in one source file (`src/Fun.Compiler/Elaborator.Patterns.cs`):
+Steps 1–3 of the brief are done, in one source file (`src/Quill.Compiler/Elaborator.Patterns.cs`):
 `Refined` factored out of `RefineContext` and applied to all seven channels, and
 `RefinementTarget` now takes the level of the variable the scrutinee *evaluates to* (`VVar` with
 an empty spine), null otherwise. Seven new cases, each proven on the unpatched tree first:
@@ -194,9 +194,9 @@ an empty spine), null otherwise. Seven new cases, each proven on the unpatched t
 self-methods, evidence, alias-scrutinee}`.
 
 Integrator's own run on `main` after the merge: **954 cases, 0 failed** (947 + 7), xUnit
-**208/208**, `dotnet build` 0 errors. Timing `/tmp/orc/b_200_r.fun` through the single-file
+**208/208**, `dotnet build` 0 errors. Timing `/tmp/orc/b_200_r.qll` through the single-file
 runner: **37.8 s → 1.02 s** (it previously blew the runner's 60 s elaboration budget outright).
-`d.fun` and `e.fun` still fail with the same mismatch — untouched, no cases, as specified.
+`d.qll` and `e.qll` still fail with the same mismatch — untouched, no cases, as specified.
 
 **Still open on this ticket — not code:**
 1. ~~The `d`/`e` ruling (branch-local types see the matched variable as the matched head?)~~ —
@@ -210,15 +210,15 @@ runner: **37.8 s → 1.02 s** (it previously blew the runner's 60 s elaboration 
    implemented, and it is a new ticket rather than part of this one. The reproducers stay here
    because `/tmp` is ephemeral:
 
-   ```fun
-   // d.fun — y : T written inside the branch
+   ```quill
+   // d.qll — y : T written inside the branch
    ({ f : [T : Type] -> T -> I64 = fn[T](x) {
         match (T) { I64 => { y : T = x; y + 1 }, _ => 0 } };
       f(7) })
    ```
 
-   ```fun
-   // e.fun — U = T, then y : U inside the branch
+   ```quill
+   // e.qll — U = T, then y : U inside the branch
    ({ f : [T : Type] -> T -> I64 = fn[T](x) {
         U = T;
         match (T) { I64 => { y : U = x; y + 1 }, _ => 0 } };
@@ -248,7 +248,7 @@ runner: **37.8 s → 1.02 s** (it previously blew the runner's 60 s elaboration 
 
 ## Ablation (fork, 2026-10-01) — every channel is pinned; `Opened` and `ConstructorEntries` are distinct paths (closes item 3)
 
-Method: for each of the seven channels in `RefineContext` (`src/Fun.Compiler/Elaborator.Patterns.cs`),
+Method: for each of the seven channels in `RefineContext` (`src/Quill.Compiler/Elaborator.Patterns.cs`),
 replace that channel's rewrite with a pass-through of the untouched channel (one line per channel;
 the `ConstructorEntries` and `Evidence` blocks replaced whole — "skip that channel", the smaller
 honest edit), rebuild, run the full suite, record failures, revert. `git diff` empty after every
@@ -283,8 +283,8 @@ constructor into *both* channels, but the two consumers read different halves:
 
 So the ticket's guess is right that patterns resolve through `ConstructorEntries`, and wrong that
 the two might be one path: term uses pin `Opened`, patterns pin `ConstructorEntries`, and the
-distinguishing programs are the two cases themselves (`type-case-constructor-entries.fun` expect
-`1`, `type-case-constructor-entries-pattern.fun` expect `8`) — each flips under exactly one
+distinguishing programs are the two cases themselves (`type-case-constructor-entries.qll` expect
+`1`, `type-case-constructor-entries-pattern.qll` expect `8`) — each flips under exactly one
 ablation, in opposite directions.
 
 **Observations, not chased:** one case can pin two channels — `type-case-self-methods` fails under

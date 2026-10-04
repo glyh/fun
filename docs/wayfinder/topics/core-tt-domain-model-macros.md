@@ -1,6 +1,6 @@
 ---
 title: Domain model — macros
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 ---
 
 # Domain model — macros
@@ -207,7 +207,7 @@ A capture's extent is structural: the trailing hole reads at its form's order, a
 hole followed by `,` or `;` reads to it, any other hole is one term
 ([capture-extents-chosen-by-exceptions](../tickets/capture-extents-chosen-by-exceptions.md),
 closed; [brackets-decide-grouping](../tickets/brackets-decide-grouping.md)). Racket's `syntax-rules` is
-a `syntax-case` macro; `fun`'s template is likewise a macro. The template keeps
+a `syntax-case` macro; `quill`'s template is likewise a macro. The template keeps
 one job, the **parse**: its patterns and fixity decide which tokens a use
 consumes and what each hole captures. Everything after is a macro whose
 parameters are the captures and whose body is the replacement as **quoted

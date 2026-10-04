@@ -1,6 +1,6 @@
 ---
 title: Stage 11 macro-powered language features spec
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: open
@@ -52,7 +52,7 @@ branch bodies; constructor patterns in tuples). Design + detail:
 
 ## Candidate use cases
 
-A curated shortlist of macro use cases that exploit `fun`-specific capabilities
+A curated shortlist of macro use cases that exploit `quill`-specific capabilities
 (types-as-values, type-providing macros, type-case + record reflection, traits as
 dictionaries, effects) — the idea store for future increments:
 [macro use-case shortlist](../topics/macro-use-case-shortlist.md).
@@ -65,10 +65,10 @@ dictionaries, effects) — the idea store for future increments:
   — the ticket and [Unify operators into the scope-aware binding table](unify-operators-into-scope-aware-binding-table.md),
   which blocked it, are both closed. **Re-measured 2026-09-26 on the port:** the comparison and
   equality operators are already prelude definitions over primitives
-  (`pub (<) = fn(x, y) { … }` and the `Eq` impls, `std/stage2.fun:13-25`), while the arithmetic
-  five are still primitives (`+` at `src/Fun.Compiler/Primitives.cs:44`). So the demotion is
+  (`pub (<) = fn(x, y) { … }` and the `Eq` impls, `std/stage2.qll:13-25`), while the arithmetic
+  five are still primitives (`+` at `src/Quill.Compiler/Primitives.cs:44`). So the demotion is
   half-done and no longer blocked; what is left is the `+`/`-`/`*`/`/`/`%` half, whose cost is
-  whatever the fixity declaration already handles (they are `pub infix` in `std/stage2.fun:31-35`).
+  whatever the fixity declaration already handles (they are `pub infix` in `std/stage2.qll:31-35`).
   Whether that half is wanted is this ticket's call, not a blocker.
 - [Reflect Match in the Expr macro ADT](reflect-match-in-expr-macro-adt.md)
   — required for a *true* prelude-macro `if` (macros can't construct `Match` today).
@@ -85,10 +85,10 @@ gone and `if` already is a prelude form.
 **Landed:** five keyword tokens deleted — `then`, `with`, `end`, `else`, `Unit`.
 Nothing matched them: a syntax form's rule literals compare by spelling
 (`Enforest_template.same_literal_token`, now `SameLiteral` in
-`src/Fun.Expand/Enforest.Roles.cs`), so the prelude's `if` form matches
+`src/Quill.Expand/Enforest.Roles.cs`), so the prelude's `if` form matches
 `else` as a plain token, and `Unit` had an identical `Ident` path in expression
 and pattern position. They are ordinary identifiers now
-(`test/conformance/cases/values/freed-keywords.fun`).
+(`test/conformance/cases/values/freed-keywords.qll`).
 
 ## What remains
 
@@ -99,7 +99,7 @@ and pattern position. They are ordinary identifiers now
   unification: normally a fresh meta (same behaviour), but an expected type could
   force an existing heap, widening what is discharged. `RefNew` also carries E11's
   generative module stamp, so the core node stays either way. (Prototype path `elab_infer.ml`;
-  the port's refs live in `src/Fun.Compiler/Elaborator.Refs.cs`, whose note is the same: "each
+  the port's refs live in `src/Quill.Compiler/Elaborator.Refs.cs`, whose note is the same: "each
   `Ref(A)` gets a fresh one".)
 - Everything else keyword-driven (`match`, `fn`, `struct`, `module`, `sig`,
   `enum`, `trait`, `impl`, `effect`, `macro`, `pattern`, `import`, `open`,
@@ -109,7 +109,7 @@ and pattern position. They are ordinary identifiers now
 - Not this ticket, noticed: the prototype's `enforest_pat.ml` picked type patterns (`I64`,
   `Unit`, `Char`, `String`, `Absurd`) by spelling — an M12 survivor. **Re-measured 2026-09-26:**
   the port resolves them structurally, as `Pattern.AtomType(AtomTy Ty)`
-  (`src/Fun.Kernel/Syntax.Patterns.cs:27`, elaborated at `src/Fun.Compiler/Elaborator.Match.cs:184`,
+  (`src/Quill.Kernel/Syntax.Patterns.cs:27`, elaborated at `src/Quill.Compiler/Elaborator.Match.cs:184`,
   `:416`) — the spelling lookup did not port, so there is nothing to demote here.
 
 ## Grilled (2026-09-16): `ref` / `deref` stay compiler nodes

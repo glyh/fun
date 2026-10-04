@@ -58,7 +58,7 @@ reachable refusals hiding behind rows the first audit marked fixed** — its row
 
 ## The program, and both runners
 
-```fun
+```quill
 { M = module { pub f = fn(x : I64) { x } };
   g = fn(u : I64) { match (u) { M.f(a) => a, _ => 0 } };
   g(3) }
@@ -88,7 +88,7 @@ check both directions before changing anything:
 
 ## Where the port refuses
 
-`dotnet/src/Fun.Compiler/Elaborator.Enum.cs:43`, reached with the other two sites the audit
+`dotnet/src/Quill.Compiler/Elaborator.Enum.cs:43`, reached with the other two sites the audit
 recorded for the same shape (`Elaborator.Match.cs:93,161`) — one of them may be the right place
 for the error rather than the throw.
 
@@ -105,7 +105,7 @@ for the error rather than the throw.
 
 ## Reading
 
-- `dotnet/src/Fun.Compiler/Elaborator.Enum.cs:43`, `Elaborator.Match.cs:93,161`
+- `dotnet/src/Quill.Compiler/Elaborator.Enum.cs:43`, `Elaborator.Match.cs:93,161`
 - [pattern-head-accepts-type-formers](pattern-head-accepts-type-formers.md) — the closed ruling
   that bounds the fix
 - [the constructor-pattern-head divergence](port-stage2-residue.md) — the route already fixed, so

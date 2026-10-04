@@ -1,6 +1,6 @@
 ---
-title: Syntax highlighting for fun
-parent: ../fun-design-map.md
+title: Syntax highlighting for quill
+parent: ../quill-design-map.md
 labels:
   - wayfinder:fog
 status: open
@@ -8,18 +8,18 @@ assignee:
 blocked_by: []
 ---
 
-# Syntax highlighting for fun
+# Syntax highlighting for quill
 
 ## Desire
 
-The user wants to see proper syntax highlighting for `fun` source soon. This is a
+The user wants to see proper syntax highlighting for `quill` source soon. This is a
 visibility/ergonomics goal, not a language-semantics one — but the surface makes it
 unusually hard.
 
 ## Why treesitter is a doubt
 
 Tree-sitter is the default choice for editor highlighting, and it is a **context-free
-parser**. `fun`'s surface is not context-free in the ways that matter for
+parser**. `quill`'s surface is not context-free in the ways that matter for
 highlighting:
 
 1. **Enforestation.** Parsing is interleaved with macro expansion. The token stream

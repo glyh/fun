@@ -1,6 +1,6 @@
 ---
 title: Unify procedural macro call syntax with function calls
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

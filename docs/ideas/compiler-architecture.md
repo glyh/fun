@@ -56,7 +56,7 @@ How do you avoid program representation bloat?, score 44, 37 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/l41frg/how_do_you_avoid_program_representation_bloat/
 (2021-01), where one author counts four representations and asks whether that is inherent.
 
-**Bearing on `fun`.** Already has it, by name: `Surface.t` was `Syntax.t` with information thrown
+**Bearing on `quill`.** Already has it, by name: `Surface.t` was `Syntax.t` with information thrown
 away, and it is deleted (`docs/wayfinder/tickets/delete-surface-ir.md`) — the elaborator reads
 expanded `Syntax.t`, so ids and spans reach it with no conversion in between. The other layers
 (`Core.term`, values) were explicitly *not* examined, so the measurement is half done.
@@ -88,9 +88,9 @@ sides are represented in this catalog.
 **Source.** Why not retain the AST?, score 41, 54 comments,
 https://www.reddit.com/r/Compilers/comments/1w989ra/why_not_retain_the_ast/ (2026-09).
 
-**Bearing on `fun`.** `fun` is on this side for the front half by accident of design: one
+**Bearing on `quill`.** `quill` is on this side for the front half by accident of design: one
 `Syntax.t` carries the reader's output through enforestation into elaboration. The annotation half
-does not apply — `fun` has no middle end to annotate into.
+does not apply — `quill` has no middle end to annotate into.
 
 ### Single pass with no intermediate layer at all: emit while you parse
 
@@ -120,7 +120,7 @@ comments, https://www.reddit.com/r/Compilers/comments/1vxj95o/behold_my_abominat
 https://www.reddit.com/r/ProgrammingLanguages/comments/1is7gst/how_the_pipefish_compiler_works_some_highlights/
 (2025-02).
 
-**Bearing on `fun`.** Rejected by construction: `fun` is one path with a real handoff
+**Bearing on `quill`.** Rejected by construction: `quill` is one path with a real handoff
 (`source → reader → enforestation → expanded Syntax → elaboration → Core term → NbE → value`) and
 `Core.term` is that intermediate layer. The Pipefish regret is the argument for keeping it.
 
@@ -145,15 +145,15 @@ assume a DAG, and this is not one.
 **Maturity.** research — Racket and Hackett are the working precedents in the thread; no
 production system in the corpus is claimed to do this incrementally.
 
-**Tried by.** Hackett (type checking in the loop), Racket (asked about, unanswered); `fun`.
+**Tried by.** Hackett (type checking in the loop), Racket (asked about, unanswered); `quill`.
 
 **Source.** How do you architect a compiler for a language with Lispy macros?, score 15, 23
 comments, https://www.reddit.com/r/ProgrammingLanguages/comments/bycyif/how_do_you_architect_a_compiler_for_a_language/
 (2019-06).
 
-**Bearing on `fun`.** Already has it, decided: enforestation interleaves with expansion, expansion
+**Bearing on `quill`.** Already has it, decided: enforestation interleaves with expansion, expansion
 interleaves with elaboration *per binding*, and expansion may ask elaboration only through the
-fixed `IMacroRuntime` adapter — `Fun.Expand` cannot reference `Fun.Compiler`, so the cycle is
+fixed `IMacroRuntime` adapter — `Quill.Expand` cannot reference `Quill.Compiler`, so the cycle is
 crossed by an interface rather than by shared state. The thread's incrementality objection is live
 and unpaid: caching sits in the `Loader`'s per-process dictionaries.
 
@@ -176,7 +176,7 @@ example) can make types infinite and needs cyclic structures to represent.
 **Maturity.** shipped — this is what every mature front end does with `for`, `+=`, operator
 sections and the like.
 
-**Tried by.** TypeScript/Rust `Self` (proposed desugaring in the thread); `fun` (templates).
+**Tried by.** TypeScript/Rust `Self` (proposed desugaring in the thread); `quill` (templates).
 
 **Source.** Desugaring for self types, score 31, 11 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/mtt4gu/desugaring_for_self_types/ (2021-04);
@@ -184,7 +184,7 @@ How do you avoid program representation bloat?, score 44, 37 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/l41frg/how_do_you_avoid_program_representation_bloat/
 (2021-01).
 
-**Bearing on `fun`.** Already has it: templates desugar to macros
+**Bearing on `quill`.** Already has it: templates desugar to macros
 (`docs/wayfinder/tickets/templates-desugar-to-macros.md`, closed and implemented), so the
 elaborator never learns a second form; there is exactly one grammar for types and one `struct`.
 
@@ -219,7 +219,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1is7gst/how_the_pipefish_
 https://www.reddit.com/r/ProgrammingLanguages/comments/1py5q42/pipefish_architecture_and_workflow/
 (2025-12) — the fixed relexer is described there as working "on an assembly-line principle".
 
-**Bearing on `fun`.** Has it differently, at file granularity rather than object granularity: a
+**Bearing on `quill`.** Has it differently, at file granularity rather than object granularity: a
 feature's code goes in its own partial file (`Elaborator.<Feature>.cs`, `Nbe.<Feature>.cs`,
 `Enforest.<Feature>.cs`) and a shared dispatch switch contributes one case line that calls into it.
 The rule being enforced is the same — one feature, one place — with the call graph as the chain.
@@ -271,7 +271,7 @@ visitors?, score 19, 22 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/7w3oeh/whats_your_experience_with_visitors/
 (2018-02).
 
-**Bearing on `fun`.** Already has it, implicitly: there is no visitor layer. Each stage is a
+**Bearing on `quill`.** Already has it, implicitly: there is no visitor layer. Each stage is a
 partial file of dispatch, and the "one case line in a shared switch" rule is the Church-encoded
 shape — the sum is the syntax type, the stage is the function.
 
@@ -312,7 +312,7 @@ https://www.reddit.com/r/Compilers/comments/1ivgj5b/ssa_ir_from_ast_using_brauns
 https://www.reddit.com/r/Compilers/comments/1jjldhu/land_ahoy_leaving_the_sea_of_nodes/ (2025-03,
 link post pointing at v8.dev/blog/leaving-the-sea-of-nodes).
 
-**Bearing on `fun`.** Genuinely new — `fun` has no middle end, so there is no SSA form to build.
+**Bearing on `quill`.** Genuinely new — `quill` has no middle end, so there is no SSA form to build.
 The part that already applies is the separation: readback, unification and elaboration recurse over
 structure as their own passes, and no pass writes analysis results back into `Core.term`.
 
@@ -341,7 +341,7 @@ expressions — so the motivating benefit may be narrower than the memory benefi
 https://www.reddit.com/r/ProgrammingLanguages/comments/1co8qpv/flat_ast_and_states_machine_over_recursion_is/
 (2024-05).
 
-**Bearing on `fun`.** Not applicable yet and worth deciding before it is: `Core.term` and
+**Bearing on `quill`.** Not applicable yet and worth deciding before it is: `Core.term` and
 `Syntax.t` are pointer-linked and traversed recursively, and the evaluator deliberately does *not*
 mirror that — a term needing a sub-evaluation gets a `Kont` frame rather than a native call. The
 one measured stack hazard is recorded separately: `Primitives.cs:165`'s refusal is observable only
@@ -374,11 +374,11 @@ is claimed to do this.
 https://www.reddit.com/r/ProgrammingLanguages/comments/79fkpu/representing_asts_as_byte_strings_with_with_small/
 (2017-07).
 
-**Bearing on `fun`.** Genuinely new. The nearest existing decision is the opposite kind of sharing:
+**Bearing on `quill`.** Genuinely new. The nearest existing decision is the opposite kind of sharing:
 `EquatableArray<T>` exists precisely because `ImmutableArray<T>` compares by reference and made
-structurally equal records unequal — `fun` chose value-shaped comparison over encoded identity.
+structurally equal records unequal — `quill` chose value-shaped comparison over encoded identity.
 Note also that a byte-string tree has no place for scope sets, which are per-run integer sets in
-`Fun.Kernel/ScopeSet.cs`.
+`Quill.Kernel/ScopeSet.cs`.
 
 ### Intern names, and hash-cons terms you compare often
 
@@ -405,7 +405,7 @@ silently fails to unify with the interned one.
 corpus treats as a research technique with at most three threads of attention.
 
 **Tried by.** Oil (interned lexemes); Racket and ML compilers (hash-consing, per the recursive-tree
-thread); `fun` (`Atom` for names, no term hash-consing).
+thread); `quill` (`Atom` for names, no term hash-consing).
 
 **Source.** What is the point of having a constants table in designing a compiler without
 interning?, score 19, 13 comments,
@@ -416,7 +416,7 @@ comments, https://www.reddit.com/r/ProgrammingLanguages/comments/17tw4nc/which_l
 https://www.reddit.com/r/ProgrammingLanguages/comments/khdxkc/hashconsing_garbage_collection_appel_1993/
 (2020-12).
 
-**Bearing on `fun`.** Has the first half: `Atom` names are interned and identity matters — which is
+**Bearing on `quill`.** Has the first half: `Atom` names are interned and identity matters — which is
 why `EquatableArray<T>` was introduced when reference comparison made equal records unequal. The
 second half is open and has a specific obstacle: nominal identity is applicative-by-purity and type
 equality is type-specialized, so hash-consing types would need to respect both, and nothing
@@ -450,7 +450,7 @@ languages?, score 43, 16 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/mj8j8n/what_are_common_pitfalls_and_strategies_when/
 (2021-04).
 
-**Bearing on `fun`.** Genuinely new, and the corpus's nearest analogue explains why: `fun` runs on
+**Bearing on `quill`.** Genuinely new, and the corpus's nearest analogue explains why: `quill` runs on
 NbE with `Kont` frames, so continuation structure is the evaluator's own frame stack rather than a
 transform the source goes through. If a backend ever appears, this is the phase it will need.
 
@@ -485,9 +485,9 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/mj8j8n/what_are_common_pi
 https://www.reddit.com/r/ProgrammingLanguages/comments/1sbr2sy/compiling_with_sequent_calculus/
 (2026-04).
 
-**Bearing on `fun`.** Decided in favour of (a) by the type system: traits carry structural
+**Bearing on `quill`.** Decided in favour of (a) by the type system: traits carry structural
 dictionary evidence with most-precise-impl-wins and there is no monomorphization pass, so every
-pass in `Fun.Compiler` already handles a rigid variable. The cost shows up as the budget: one
+pass in `Quill.Compiler` already handles a rigid variable. The cost shows up as the budget: one
 evaluation budget is shared by the checker and macro applications because specialization is not
 doing the bounding.
 
@@ -531,7 +531,7 @@ https://www.reddit.com/r/Compilers/comments/1ndnp34/beautiful_optimization_pass_
 LLVM's New Pass Manager, score 8, 11 comments,
 https://www.reddit.com/r/Compilers/comments/mfkvki/llvms_new_pass_manager/ (2021-03).
 
-**Bearing on `fun`.** Has it differently: there is no pass manager because there is one path and
+**Bearing on `quill`.** Has it differently: there is no pass manager because there is one path and
 the interleaved driver is the ordering. The place where dependency declaration would bite is
 already ticketed informally — the pipeline wiring checklist
 (`docs/wayfinder/topics/pipeline-wiring-checklist.md`) is the hand-maintained version of what a
@@ -575,10 +575,10 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1gjdwl0/responsive_compil
 https://www.reddit.com/r/ProgrammingLanguages/comments/1nukes9/language_servers_suck_the_joy_out_of_language/
 (2025-09) — the poster read it and judged it overkill.
 
-**Bearing on `fun`.** Open, and it is the fog item: a first-class compiler API for tools, LSP and
+**Bearing on `quill`.** Open, and it is the fog item: a first-class compiler API for tools, LSP and
 REPL (`docs/wayfinder/topics/first-class-elaborator-api.md`) would want exactly these queries, but
-today `Fun.Expand` may ask elaboration only through `IMacroRuntime` and `Fun.Expand` cannot
-reference `Fun.Compiler` by design. The interleaved driver is also hostile to it — a cache key
+today `Quill.Expand` may ask elaboration only through `IMacroRuntime` and `Quill.Expand` cannot
+reference `Quill.Compiler` by design. The interleaved driver is also hostile to it — a cache key
 becomes a *(definition, Context)* pair, not one hash.
 
 ### Content-address definitions instead of file paths
@@ -610,9 +610,9 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1340z3r/rprogramminglangu
 https://www.reddit.com/r/ProgrammingLanguages/comments/12im9hi/mandala_experiment_data_management_as_a_builtin/
 (2023-04), which describes memoized functions versioned in a content-addressed git-style DAG.
 
-**Bearing on `fun`.** Fog, and named as such: the content-addressed codebase
-(`docs/wayfinder/topics/content-addressed-codebase.md`). Two obstacles are recorded in fun's own
-terms — scope sets are per-run integer sets in `Fun.Kernel/ScopeSet.cs`, so a hash needs a
+**Bearing on `quill`.** Fog, and named as such: the content-addressed codebase
+(`docs/wayfinder/topics/content-addressed-codebase.md`). Two obstacles are recorded in quill's own
+terms — scope sets are per-run integer sets in `Quill.Kernel/ScopeSet.cs`, so a hash needs a
 scope-normal form, and the interleaved driver makes a cache key a *(definition, Context)* pair. The
 codebase-layout decisions (the `std` restructure, the bootstrap↔compiler interface) come first
 because they would have to be hash-shaped.
@@ -635,14 +635,14 @@ to print usefully — which pushes you to build readback/printing early or suffe
 **Maturity.** shipped — Coq, Agda, Lean and every de Bruijn-based checker; locally nameless and
 level-based variants are the acknowledged repairs.
 
-**Tried by.** The CiC compiler in the thread (SML, nameless throughout); `fun`.
+**Tried by.** The CiC compiler in the thread (SML, nameless throughout); `quill`.
 
 **Source.** de Bruijn indices, score 37, 29 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/fwdkv1/de_bruijn_indices/ (2020-04); My
 nameless compiler for the CiC, score 53, 13 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/ku0m4f/my_nameless_compiler_for_the_cic/ (2021-01).
 
-**Bearing on `fun`.** Already has it, with both numbers: **Index** is counted back from the innermost
+**Bearing on `quill`.** Already has it, with both numbers: **Index** is counted back from the innermost
 entry and is what a term stores; **Level** is counted from the outermost and is stable as the Context
 grows, so that is what a resolved name is located by. The glossary bans the phrase "de Bruijn
 number", which is the naming decision made.
@@ -666,7 +666,7 @@ checker needs a term to compare against. A bug in evaluation is now a *type* err
 **Maturity.** shipped — bidirectional elaboration with a shared evaluator is the standard shape for
 dependently typed implementations.
 
-**Tried by.** Agda, Lean, Idris, Coq; `fun`.
+**Tried by.** Agda, Lean, Idris, Coq; `quill`.
 
 **Source.** The appeal of bidirectional type-checking, score 78, 47 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/v3z7r8/the_appeal_of_bidirectional_typechecking/
@@ -674,7 +674,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/v3z7r8/the_appeal_of_bidi
 https://www.reddit.com/r/ProgrammingLanguages/comments/1uw01lp/bidirectional_elaborators_à_la_carte/
 (2025-10, link post → arXiv 2607.09564).
 
-**Bearing on `fun`.** Already has it, decided: bidirectional elaboration plus NbE, and the budget
+**Bearing on `quill`.** Already has it, decided: bidirectional elaboration plus NbE, and the budget
 that lets the checker spend from the same pool — `Eval_budget`, 1,000,000 calls per request, with
 running out reported as `ElabError EvaluationBudgetExceeded` rather than a hang. A macro application
 is a call under that same one budget, so expansion cannot outspend checking.
@@ -709,7 +709,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/18zya3b/from_evaluator_to
 comments, https://www.reddit.com/r/ProgrammingLanguages/comments/1rob2ub/pros_and_cons_of_building_an_interpreter_first/
 (2026-03).
 
-**Bearing on `fun`.** Has it differently: the "interpreter" is the NbE evaluator built alongside
+**Bearing on `quill`.** Has it differently: the "interpreter" is the NbE evaluator built alongside
 the elaborator rather than before it, and the structural reuse is explicit — a binding contributes
 entries only through `Binding.Slots()`, which both elaboration and evaluation read, so they cannot
 disagree on order or count.
@@ -738,7 +738,7 @@ alive after one is clearly ahead is pure drag.
 *way to keep two implementations* it is contradicted by this project's own history.
 
 **Tried by.** YARPGen/Xsmith-style C and Racket fuzzers (named in the corpus); a JS+WASM+ASM toy
-toolchain in the thread below; `fun`, which used the OCaml prototype as its second engine and then
+toolchain in the thread below; `quill`, which used the OCaml prototype as its second engine and then
 deleted it.
 
 **Source.** Ensuring identical behavior between my compiler and interpreter?, score 56, 26 comments,
@@ -748,9 +748,9 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/11mpom9/ensuring_identica
 https://www.reddit.com/r/Compilers/comments/v0fvqw/detecting_c_compiler_frontend_bugs_via_grammar/
 (2022-05).
 
-**Bearing on `fun`.** Decided, and the decision was to stop: the OCaml prototype was deleted on
+**Bearing on `quill`.** Decided, and the decision was to stop: the OCaml prototype was deleted on
 2026-09-25 *after* measuring `port-fails: 0` over every program in the repo with 34 disagreements
-recorded as prototype defects in `test/conformance/prototype-divergences.txt`. The lesson fun
+recorded as prototype defects in `test/conformance/prototype-divergences.txt`. The lesson quill
 recorded is the cost side of this entry — do not keep two implementations alive once one measures as
 a superset; `CLAUDE.md` now says so explicitly.
 
@@ -777,15 +777,15 @@ the `Nbe.cs:586` unreachable-guard finding came from.
 **Maturity.** shipped — every production VM and every logic programming system uses frame stacks;
 the corpus's version of the problem appears as the flat-tree thread's recursion-limit discussion.
 
-**Tried by.** BEAM, SML/NJ, Prolog systems; `fun`.
+**Tried by.** BEAM, SML/NJ, Prolog systems; `quill`.
 
 **Source.** Flat AST and states machine over recursion: is worth it?, score 61, 39 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1co8qpv/flat_ast_and_states_machine_over_recursion_is/
 (2024-05) — the recursion-limit problem, stated without the fix. No thread in this corpus argues
-for an explicit frame stack, so the second half of this entry rests on `fun`'s own record rather
+for an explicit frame stack, so the second half of this entry rests on `quill`'s own record rather
 than on community evidence.
 
-**Bearing on `fun`.** Already has it, by rule: the evaluator never recurses on the native stack per
+**Bearing on `quill`.** Already has it, by rule: the evaluator never recurses on the native stack per
 object-level call — a term needing a sub-evaluation gets a `Kont` frame — while readback,
 unification and elaboration may recurse structurally. The residual risk is measured and ticketed,
 not guessed: `Primitives.cs:165` and `deep-non-tail-recursion-is-superlinear`.
@@ -811,7 +811,7 @@ And you must resist formatting early: a message built at the throw site can neve
 **Maturity.** shipped — this is what Rust, Elm and GHC do; the throwing style is what most hobby
 compilers do.
 
-**Tried by.** Rust (`Diagnostic` with structured codes), Elm; `fun` (`ElabError`, `Expand_error`,
+**Tried by.** Rust (`Diagnostic` with structured codes), Elm; `quill` (`ElabError`, `Expand_error`,
 `FunException`).
 
 **Source.** Reporting errors, score 8, 23 comments,
@@ -820,7 +820,7 @@ strategies are you using for your language project?, score 30, 42 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1juwzlg/what_testing_strategies_are_you_using_for_your/
 (2025-04).
 
-**Bearing on `fun`.** Has it, with a deliberate exception: `FunException` is a genuine *language*
+**Bearing on `quill`.** Has it, with a deliberate exception: `FunException` is a genuine *language*
 error and `NotImplementedException("not ported yet: …")` marks an unported path and is deliberately
 distinguishable, so a refusal can never satisfy a case expecting `error` — the runner counts it as
 a failure and never as a passing `error` case. Rule: exceptions are not control flow; dispatch is
@@ -861,7 +861,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1f2sx39/automatically_pas
 https://www.reddit.com/r/ProgrammingLanguages/comments/1gjdwl0/responsive_compilers_was_a_great_talk_have_there/
 (2024-11).
 
-**Bearing on `fun`.** Open fog with a measured diagnosis: the diagnostics polish boundary. Positions
+**Bearing on `quill`.** Open fog with a measured diagnosis: the diagnostics polish boundary. Positions
 already exist — `Budget._site` (`Budget.cs:23`) is set by `Elaborator.At` and `Budget.Where()`
 prints it — but `Pattern` (all fourteen variants) and `EffectRow` have no span at all, and
 `Driver.cs:38-46` is the funnel that discards token spans. Of the 130 `new FunException(` sites, 73
@@ -895,7 +895,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1bvsvby/i_wrote_a_c99_com
 technique in the corpus — the asking threads are unanswered by any cited implementation.
 
 **Tried by.** Clang and rustc (per the resource thread's mention); Chumsky and Gibberish (library
-support, cited in the corpus); not `fun`.
+support, cited in the corpus); not `quill`.
 
 **Source.** Any good resources for creating actually modern parsers? Things like error recovery and
 messages., score 41, 12 comments,
@@ -904,7 +904,7 @@ https://www.reddit.com/r/Compilers/comments/1ejabxw/any_good_resources_for_creat
 https://www.reddit.com/r/Compilers/comments/on72w/managing_multiple_errors_in_topdown_parsers/
 (2012-01).
 
-**Bearing on `fun`.** Unruled, and deliberately so: the enforester ticket measured it and concluded
+**Bearing on `quill`.** Unruled, and deliberately so: the enforester ticket measured it and concluded
 error recovery "has **no workload** and stays unruled" — that framing is recorded as the failure
 mode of `type-case-refinement` caught *before* it repeated. Every form the reader sees has a span
 and `Driver.cs` throws them away; span-carrying expansion errors is the one buildable item left on
@@ -912,7 +912,7 @@ that ticket.
 
 ### One conformance suite as the single source of truth — and a sweep that proves it bites
 
-**What it is.** A directory of `<name>.fun` + `<name>.expect` pairs, nothing to register, where
+**What it is.** A directory of `<name>.qll` + `<name>.expect` pairs, nothing to register, where
 `.expect` is a value, a constructor name, `ok` or `error`. Language behaviour lives there and
 nowhere else — internal tests keep only what inspects internals (shapes, round trips, budget
 accounting, an exact error constructor, a type rather than a value). Then *verify* the suite by
@@ -927,7 +927,7 @@ of its 73 mutations.
 
 **Costs.** Snapshot-style expectations rot: Yap's author is chasing "replacing 'well, the snapshot
 changed' with meaningful tests". A suite that pins error wording makes every message edit a
-two-file change — fun deliberately does *not* pin wording, calling it implementation-specific. And
+two-file change — quill deliberately does *not* pin wording, calling it implementation-specific. And
 mutation sweeping is manual labour per guard, and cannot express "this case is redundant", which
 the separate redundancy measurement had to do by byte-comparison.
 
@@ -936,7 +936,7 @@ corpus test; mutation *sweeping* a conformance suite is rare enough that this co
 on it.
 
 **Tried by.** The reference-output approach in the testing-strategies thread (`<file>.ref`, used as
-the first compiled program of the author's own language); `fun`.
+the first compiled program of the author's own language); `quill`.
 
 **Source.** What testing strategies are you using for your language project?, score 30, 42 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1juwzlg/what_testing_strategies_are_you_using_for_your/
@@ -944,7 +944,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1juwzlg/what_testing_stra
 https://www.reddit.com/r/Compilers/comments/1vc0jx1/how_hard_could_it_be_a_younger_me_said_that_once/
 (2026-04), for the snapshot-vs-meaningful-tests complaint.
 
-**Bearing on `fun`.** Already has it, twice over: `test/conformance/cases/<area>/<name>.fun` +
+**Bearing on `quill`.** Already has it, twice over: `test/conformance/cases/<area>/<name>.qll` +
 `.expect` is the *only* place a source→value-or-error behaviour is tested, and the mutation sweep
 runs over it — `docs/wayfinder/tickets/coverage-gaps-from-the-mutation-sweep.md` and
 `conformance-runner-aborts-a-mutation.md` (that one's real defect: "a whitelist maintained twice
@@ -972,7 +972,7 @@ value sits and no thread in this corpus describes doing it.
 **Maturity.** shipped — YARPGen, Csmith, Xsmith, AFL-on-grammars; explicitly listed as a gap in
 compiler textbooks.
 
-**Tried by.** YARPGen (C/C++), Xsmith (Racket, Dafny, SML), oss-fuzz harnesses; not `fun`.
+**Tried by.** YARPGen (C/C++), Xsmith (Racket, Dafny, SML), oss-fuzz harnesses; not `quill`.
 
 **Source.** How to use fuzzing to test an arbitrary programming language?, score 32, 18 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/l0doct/how_to_use_fuzzing_to_test_an_arbitrary/
@@ -985,9 +985,9 @@ would cover, score 146, 36 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/gavu8z/what_i_wish_compiler_books_would_cover/
 (2020-04).
 
-**Bearing on `fun`.** Not present, and the honest reason is not laziness: a conformance case can
+**Bearing on `quill`.** Not present, and the honest reason is not laziness: a conformance case can
 only assert a source→value/error triple, so a fuzzer needs an oracle — differential against what?
-The answer would be the two engines fun no longer has. Fuzzing is therefore gated on either a
+The answer would be the two engines quill no longer has. Fuzzing is therefore gated on either a
 grammar generator plus an invariant ("does not crash, does not exceed the budget") or a second
 engine, and neither is ticketed.
 
@@ -1010,14 +1010,14 @@ reconstruction.
 
 **Maturity.** shipped — universal practice; no competing method appears in the corpus.
 
-**Tried by.** Everyone the corpus names; `fun` makes it a written rule in `CLAUDE.md`.
+**Tried by.** Everyone the corpus names; `quill` makes it a written rule in `CLAUDE.md`.
 
 **Source.** Debugging interpreters/compilers, score 32, 21 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/nia51e/debugging_interpreterscompilers/ (2021-05);
 GraphViz Generation from AST, score 38, 5 comments,
 https://www.reddit.com/r/Compilers/comments/1jv0yxd/graphviz_generation_from_ast/ (2025-04).
 
-**Bearing on `fun`.** Already has it, written down: *debug via instrumentation, not test-case
+**Bearing on `quill`.** Already has it, written down: *debug via instrumentation, not test-case
 exploration* — add logging or a reusable utility that exposes the intermediate representation, and
 capture `dotnet build && dotnet test --nologo 2>/tmp/log`. The goal is one diagnostic that pins the
 root cause, not a matrix of modified inputs.
@@ -1043,13 +1043,13 @@ O(n²) again tomorrow.
 
 **Maturity.** shipped as advice; unverifiable as a measured claim — the thread offers no numbers.
 
-**Tried by.** Pipefish; `fun` (961 conformance cases + 209 xUnit).
+**Tried by.** Pipefish; `quill` (961 conformance cases + 209 xUnit).
 
 **Source.** Langdev is O(n²), score 64, 30 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1gpe6ai/langdev_is_on²/ (2024-11).
 
-**Bearing on `fun`.** Already has it, and the corner-case law has a fun-specific name: types are
-values and type-case on open `Type` is acceptable, which is *how* `fun` keeps n down — Consistency
+**Bearing on `quill`.** Already has it, and the corner-case law has a quill-specific name: types are
+values and type-case on open `Type` is acceptable, which is *how* `quill` keeps n down — Consistency
 > Flexibility > Correctness buys one construct (`struct` = record/module/namespace) instead of
 three features that each have to work together. The test-suite half is the conformance suite plus
 the sweep above.
@@ -1089,7 +1089,7 @@ Swift, Zig; own: performance-critical compilers).
 **Tried by.** C2 (has both C and QBE backends and wants a fourth option), Skew (JS, TS, C#, C++
 backends), chibicc-derived compilers; Nim (C as its default target), Seed7, Chicken Scheme and ATS
 are named in the C thread's comments, and `libgccjit` is proposed as a fourth option between C and
-LLVM — stabler API, more platforms; not `fun`.
+LLVM — stabler API, more platforms; not `quill`.
 
 **Source.** Is it okay to compile down to C?, score 75, 71 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/qvqa1i/is_it_okay_to_compile_down_to_c/ (2021-11);
@@ -1101,7 +1101,7 @@ The agony of choice: C++, Rust, or anything else, score 31, 65 comments,
 https://www.reddit.com/r/Compilers/comments/1ganq6q/the_agony_of_choice_c_rust_or_anything_else/
 (2024-10).
 
-**Bearing on `fun`.** Undecided and unscheduled: there is no backend, `src/Fun.Cli` prints "the
+**Bearing on `quill`.** Undecided and unscheduled: there is no backend, `src/Quill.Cli` prints "the
 .NET port has no entry point yet" and exits 1. Because the host is .NET, option (c) would mean
 writing a code generator *and* a collector; option (b) means a native dependency; option (a) means
 emitting C from `Core.term`. Nothing in `docs/wayfinder` picks one — the closest is the fog item on
@@ -1148,9 +1148,9 @@ The agony of choice: C++, Rust, or anything else, score 31, 65 comments,
 https://www.reddit.com/r/Compilers/comments/1ganq6q/the_agony_of_choice_c_rust_or_anything_else/
 (2024-10).
 
-**Bearing on `fun`.** Already has it: the implementation is C# on .NET 10, which is why
+**Bearing on `quill`.** Already has it: the implementation is C# on .NET 10, which is why
 `EquatableArray<T>` and the immutability rules exist — value-shaped records in a safe host. The
-three-project split (`Fun.Kernel` → `Fun.Expand` → `Fun.Compiler`) is the compiler-safety analogue
+three-project split (`Quill.Kernel` → `Quill.Expand` → `Quill.Compiler`) is the compiler-safety analogue
 of what a memory-safe host gives you for free: a reference that crosses the boundary is a build
 error, not a runtime crash.
 
@@ -1174,13 +1174,13 @@ has an easy fallback of "make it an error" until the language is unusable.
 
 **Maturity.** speculative — one implementation, no independent evidence in this corpus.
 
-**Tried by.** Maxon (the thread); `fun`, in a different currency.
+**Tried by.** Maxon (the thread); `quill`, in a different currency.
 
 **Source.** Our compiler refuses to spill inside a hot loop — it raises a compile error, score 16,
 24 comments, https://www.reddit.com/r/Compilers/comments/1wmkdyu/our_compiler_refuses_to_spill_inside_a_hot_loop/
 (2026-09).
 
-**Bearing on `fun`.** Has it in three places, by ruling rather than by accident: the shared
+**Bearing on `quill`.** Has it in three places, by ruling rather than by accident: the shared
 evaluation budget returns `ElabError EvaluationBudgetExceeded` naming the call instead of hanging
 (no surface syntax exists to raise it); `HandledEffectEscapes` is a refusal rather than a
 re-interpretation; and `NotImplementedException("not ported yet: …")` marks an unported path so a
@@ -1223,7 +1223,7 @@ Is Self-Hosted Now, What's Next?, score 87, 29 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/ydrz3k/zig_is_selfhosted_now_whats_next/ (2022-10,
 link post → kristoff.it/blog/zig-self-hosted-now-what/).
 
-**Bearing on `fun`.** Out of scope by ruling, and the reason is recorded: the OCaml prototype was
+**Bearing on `quill`.** Out of scope by ruling, and the reason is recorded: the OCaml prototype was
 deleted rather than promoted, and `docs/wayfinder/tickets/declare-bootstrap-compiler-interface-once.md`
 is the standing ticket for the boundary a bootstrap would need. The regression trap is exactly what
 one conformance suite exists to prevent — a language behaviour tested in exactly one place survives
@@ -1295,7 +1295,7 @@ papered over.
   program.
   One thread on grammar mutation for differential testing; nothing at all on mutating the
   compiler's own guards, nothing on property-based testing of a type checker, nothing on shrinking
-  a failing program. The mutation-sweep entry above therefore rests on `fun`'s own ticket record,
+  a failing program. The mutation-sweep entry above therefore rests on `quill`'s own ticket record,
   not on community evidence. To decide it independently you would want to read a mutation-testing
   study applied to a compiler, not Reddit.
 - **Hash-consing is near-absent** — three low-score threads (32, 13 and 3 comments). It is listed
@@ -1304,7 +1304,7 @@ papered over.
 - **Decision trees vs backtracking for pattern matching has no thread, in the posts or the
   comments.** Maranget is named once, in a passing reference inside a hobby language's pipeline
   description; a search of the 490 retrieved comments for Maranget, decision tree and backtracking
-  finds nothing. `fun` compiles to decision trees in `Fun.Kernel` and this document has no
+  finds nothing. `quill` compiles to decision trees in `Quill.Kernel` and this document has no
   community evidence to weigh against that.
 - **Content addressing** is one line inside an import survey plus a hobby project; the fog item in
   `docs/wayfinder/topics/content-addressed-codebase.md` is better evidence than anything here.
@@ -1330,12 +1330,12 @@ papered over.
 representations of a program to keep (retain-and-annotate vs staged conversion vs none at all);
 whether analysis belongs inside IR construction (Sea of Nodes vs Braun, with V8's retreat as a
 third position); query-based incrementality (121 upvotes vs 103 upvotes, five years apart);
-interleaving macro expansion with the rest of the pipeline (fun's decision vs the DAG objection);
+interleaving macro expansion with the rest of the pipeline (quill's decision vs the DAG objection);
 whether calling the visitor pattern "Church encoding" is a useful identification or a stretch of
 the word "pattern" (its thread's comments, both sides quoted in that entry); whether a Go host is
 viable for a compiler (the post's draw vs three commenters who advise against it, one of them
 writing a compiler in Go right now); and whether two
-implementations are an oracle or a liability — which `fun` resolved by measurement and deletion, a
+implementations are an oracle or a liability — which `quill` resolved by measurement and deletion, a
 resolution the corpus's differential-testing threads do not address at all.
 
 **What you would need to read to go further:** the linked blog posts and papers behind the link

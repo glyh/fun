@@ -30,10 +30,10 @@ meant to exist, and the case is the thing that stops it going latent again
 One defect wearing several sites: a traversal that does not cover every kind of the
 thing it walks, so any feature that can contain that form cannot be walked at all.
 
-- `Fun.Kernel/Core.Shift.cs:67` misses six `Term` kinds; `:107` misses `BindingTerm.Impl`
-- `Fun.Compiler/Elaborator.Enum.cs:295`, `:314`, `:352` (a form whose names/variables are unknown)
-- `Fun.Compiler/Unify.cs:206`
-- `Fun.Compiler/Nbe.StuckMatch.cs:50`
+- `Quill.Kernel/Core.Shift.cs:67` misses six `Term` kinds; `:107` misses `BindingTerm.Impl`
+- `Quill.Compiler/Elaborator.Enum.cs:295`, `:314`, `:352` (a form whose names/variables are unknown)
+- `Quill.Compiler/Unify.cs:206`
+- `Quill.Compiler/Nbe.StuckMatch.cs:50`
 
 Prototype reference: `Core.map_subterms` (`lib/core_kernel/core.ml:618`) — the single
 traversal the prototype reads. **This is the same lesson as
@@ -45,7 +45,7 @@ next `Term` kind with the same bug.
 
 ## G3. The reflection reader refuses forms the prototype reads
 
-`Fun.Compiler/Reflection.cs:603`, `:718`, `:922`, `:726`, `:928`, `:762`, `:850` —
+`Quill.Compiler/Reflection.cs:603`, `:718`, `:922`, `:726`, `:928`, `:762`, `:850` —
 a reflected `RawTypeDef`, bounded params, a unit token, and multi-argument traits and
 impls. Prototype: `lib/expand/macro_eval.ml:494`, `:593`, `:603`, `:610`, `:893`, `:898`.
 
@@ -58,15 +58,15 @@ duplicated across two paths; fix both.
 
 ## G4. A type-aware operator macro
 
-`Fun.Expand/Expander.Macros.cs:306`. Related to the operator-macro work that landed
+`Quill.Expand/Expander.Macros.cs:306`. Related to the operator-macro work that landed
 with [unit interleaving and operator macros](port-unit-interleaving.md) (closed), which
-covered the untyped case. The prelude in `dotnet/std/stage2.fun` declares operators
+covered the untyped case. The prelude in `dotnet/std/stage2.qll` declares operators
 already, so check whether a *typed* operator macro exists in the prototype at all
 before porting — if only the untyped form is exercised, this may be parity.
 
 ## G5. Recursive-enum captures predicted by name
 
-`Fun.Compiler/Elaborator.RecTypes.cs:62` — "a recursive enum whose payload types
+`Quill.Compiler/Elaborator.RecTypes.cs:62` — "a recursive enum whose payload types
 capture a variable its body does not name". The prototype predicts captures by the
 enclosing module's *use*, not by the payload's spelling
 ([nominal identity is applicative by purity](nominal-identity-applicative-by-purity.md),
@@ -77,7 +77,7 @@ this as a duplicate rather than adding a second capture rule.
 
 ## G6. A stuck match on a known scrutinee's unknown part
 
-`Fun.Compiler/Nbe.StuckMatch.cs:12` (`:50`, `:54` follow from it): the port waits only
+`Quill.Compiler/Nbe.StuckMatch.cs:12` (`:50`, `:54` follow from it): the port waits only
 on an unknown *scrutinee*, where an unknown **part** a pattern inspects should also
 wait. **Decided 2026-09-20 by the user: the match waits — it does not take the default
 arm — so the port is right and the prototype is wrong.** That makes it a recorded
@@ -109,7 +109,7 @@ rather than by compiler:
 
 - `Term.Map` is complete — `Tunnel`, `RecursiveOccurrence`, `Sig`, `TraitRef`,
   `TraitDictTy`, and a handler `Match`'s effect branches were the missing kinds.
-- New `dotnet/test/Fun.Tests/CoreTraversalTests.cs` **enumerates every kind by
+- New `dotnet/test/Quill.Tests/CoreTraversalTests.cs` **enumerates every kind by
   reflection**, constructs one and walks it, for `Term`, `BindingTerm`, `Syntax`,
   `Binding` and `Pattern`. A new kind fails there until it is walked — verified by
   deleting a case and watching the test fail, and the sample-builder documents its own

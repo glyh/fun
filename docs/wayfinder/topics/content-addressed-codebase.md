@@ -34,14 +34,14 @@ language considering it:
 - **Distributed code.** A computation can move to another location and its missing
   dependencies sync on the fly, then stay cached.
 
-For `fun` the interesting part is narrower than the whole vision: expansion is
+For `quill` the interesting part is narrower than the whole vision: expansion is
 the expensive, macro-heavy stage, and expansion output for a given definition is
 a function of content. A content-addressed store is the natural place for it.
 
-## Where `fun` stands
+## Where `quill` stands
 
 There is no persistence and no content addressing. `Loader`
-(`src/Fun.Compiler/Loader.cs`) resolves `import "path"` to `<cwd>/path.fun`,
+(`src/Quill.Compiler/Loader.cs`) resolves `import "path"` to `<cwd>/path.qll`,
 reads text, and memoizes **within one run**:
 
 - `_expanded` — path → (expanded unit, its syntax exports, its expander)
@@ -50,17 +50,17 @@ reads text, and memoizes **within one run**:
 Both are keyed by path and live only for the process; every `dotnet run` and
 every test run re-reads and re-expands the prelude and every imported unit.
 `MacroEntry` compilation is cached inside those unit entries, so it is redone run
-to run as well. `Driver` (`src/Fun.Compiler/Driver.cs`) is the only pipeline
+to run as well. `Driver` (`src/Quill.Compiler/Driver.cs`) is the only pipeline
 entry point and takes source text.
 
-## What would have to be true for `fun`
+## What would have to be true for `quill`
 
 Three obstacles are specific to this language, and they are what make this fog
 rather than a port of a known design.
 
-**1. Scope sets are not stable content.** Hygiene in `fun` is sets-of-scopes:
+**1. Scope sets are not stable content.** Hygiene in `quill` is sets-of-scopes:
 `Syntax.Id` carries a `ScopeSet`, which is an `ImmutableSortedSet<int>`
-(`src/Fun.Kernel/ScopeSet.cs`, `Syntax.cs`) of ids allocated from a counter that
+(`src/Quill.Kernel/ScopeSet.cs`, `Syntax.cs`) of ids allocated from a counter that
 varies within and between runs. Hash the AST as it stands and the *same source*
 hashes differently each run. A hash must therefore be taken over
 **scope-normalized** syntax — alpha-equivalence modulo scope-set renaming — and
@@ -70,7 +70,7 @@ None of that canonical form exists today; it is the real work in this direction.
 
 **2. Expansion output is not content-only.** Unison gets per-definition caching
 because there are no macros and nothing ambient: a definition means what it means
-by itself. In `fun`, the semantic driver elaborates one binding at a time against
+by itself. In `quill`, the semantic driver elaborates one binding at a time against
 the context the bindings above it built, and macro behaviour depends on that
 context. So a cache key here is a **pair** — definition content plus the hash of
 the elaborated context it sits in — or it is unsound: edit a macro above a
@@ -83,8 +83,8 @@ constraint that ruled out a global impl registry in
 *definition*, not the module it may be assembled into.
 
 There is also a bootstrap question: the prelude is text compiled in stages
-(`std/stage1.fun`, `std/stage2.fun`, embedded as resources by
-`src/Fun.Compiler/Fun.Compiler.csproj`). A database whose library story is
+(`std/stage1.qll`, `std/stage2.qll`, embedded as resources by
+`src/Quill.Compiler/Quill.Compiler.csproj`). A database whose library story is
 hash-addressed still needs a stage-0 source.
 
 ## What it would touch

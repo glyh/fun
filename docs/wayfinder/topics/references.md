@@ -112,7 +112,7 @@ dune test
 
 Also manually sanity-check the REPL or backend tests for the roadmap invariant:
 
-```fun
+```quill
 do
   r = ref(0)
   f = fn(_) -> deref(r)

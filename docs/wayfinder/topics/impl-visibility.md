@@ -1,6 +1,6 @@
 ---
 title: Impl visibility — usability implications
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 ---
 
 # Impl visibility — usability implications
@@ -107,7 +107,7 @@ usability appeal is real but the mechanism is not available to this language.
 
 Two axes, usually conflated. **Where an impl is found**, and **whether the
 trait's own name must be in scope to use its methods**. Rust separates them —
-impls are global, but the trait must be imported to call its methods. `fun`
+impls are global, but the trait must be imported to call its methods. `quill`
 currently answers both with `open`.
 
 | language | where impls are found | modules first-class? |
@@ -155,9 +155,9 @@ from scope — not the A-versus-B choice in front of us. Recorded on that ticket
 ### The closest precedent argues for A, not B
 
 [Modular implicits](https://www.cl.cam.ac.uk/~jdy22/papers/modular-implicits.pdf)
-(White, Bour, Yallop) is the nearest relative to `fun`'s situation: OCaml has
+(White, Bour, Yallop) is the nearest relative to `quill`'s situation: OCaml has
 first-class modules, and the design is type-directed implicit *module* arguments
-elaborating into first-class functors — structurally the same as `fun`'s
+elaborating into first-class functors — structurally the same as `quill`'s
 "structural dictionary evidence, bound implicits".
 
 They chose **lexical scope with explicit implicit declarations** — option A — and
@@ -196,20 +196,20 @@ instances** so a specific instance can be passed explicitly.
 
 An earlier draft recommended B. The evidence went the other way. The design built
 for first-class modules chose A deliberately, and B's two-place search is only
-exhaustive when an orphan rule makes it so — which `fun` does not have and would
+exhaustive when an orphan rule makes it so — which `quill` does not have and would
 have to invent.
 
 The mandatory-open tax measured above is real, but it is **not inherent to A**.
 It is inherent to A *with no way to name an impl*. Under modular implicits you
 pass the implicit module explicitly when scope does not give you what you want;
 PureScript and Idris do the same with named instances. That escape hatch is what
-makes A livable, and `fun` does not have it — `trait evidence is not a
+makes A livable, and `quill` does not have it — `trait evidence is not a
 user-facing value` ([traits](traits.md)) forecloses it by decision.
 
 So the real question is not A versus B. It is: **does the decision that trait
 evidence is never user-facing survive contact with scoped resolution?** Every
 language that chose scoped resolution also gave users a way to name an instance.
-`fun` has chosen scoped resolution and forbidden naming, which is the combination
+`quill` has chosen scoped resolution and forbidden naming, which is the combination
 none of the precedents use.
 
 Recommend re-opening that sub-decision on

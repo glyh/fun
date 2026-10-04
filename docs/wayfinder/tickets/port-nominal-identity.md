@@ -25,7 +25,7 @@ stamp**, and at least one case shows the consequences.
 
 ## Failure 1 — `values/elab-062` (expects `10`, gets `0`)
 
-```fun
+```quill
 { Set = fn(Elem : Type, cmp : Elem -> Elem -> Bool) { module {
               pub type T = Leaf | Node(T, Elem, T);
               pub lt = fn(x : Elem, y : Elem) : Bool { cmp(x, y) } } };
@@ -42,7 +42,7 @@ causes, both live, and the fix differs.
 
 - the nominal instances do not compare equal by captures at a type-case head, or
 - the type-case head `a.T` is evaluated by a nested `Eval` when matched
-  (`dotnet/src/Fun.Compiler/Nbe.Patterns.cs:88`, a recorded stopgap) and the
+  (`dotnet/src/Quill.Compiler/Nbe.Patterns.cs:88`, a recorded stopgap) and the
   nested evaluation mints or loses an instance.
 
 ## Failure 2 — `values/core-067` (expects `2`)
@@ -54,7 +54,7 @@ before changing either.
 
 ## The refusal — type-case on a generative nominal
 
-`dotnet/src/Fun.Compiler/Elaborator.Patterns.cs:198-200`:
+`dotnet/src/Quill.Compiler/Elaborator.Patterns.cs:198-200`:
 
 ```
 // Two evaluations of a generative module differ only by their run-time stamp.
@@ -106,7 +106,7 @@ readback in `lib/backend/interp/nbe_quote.ml`.
 
 ## Report
 
-Do not edit this ticket, `fun-design-map.md` or `docs/STATUS.md`; report and the
+Do not edit this ticket, `quill-design-map.md` or `docs/STATUS.md`; report and the
 integrator records. Report: the diagnosis of each failure before the fix, branch,
 commits, the conformance and xUnit counts, files touched, and any question you
 stopped on with a concrete example.

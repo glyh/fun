@@ -45,7 +45,7 @@ credits [port-stage2-residue](port-stage2-residue.md), which closed a *different
 
 ## The program, and both runners
 
-```fun
+```quill
 { effect Abort = sig { stop : Unit -> I64 };
   f = fn(u : Unit) { perform Abort.stop(u); I64 };
   E = enum { C(f(())) };
@@ -64,7 +64,7 @@ suite can already state**: after the fix both runners error, so the case is ordi
 
 ## Where the port refuses
 
-`dotnet/src/Fun.Compiler/Nbe.Effects.cs:111`:
+`dotnet/src/Quill.Compiler/Nbe.Effects.cs:111`:
 
 ```csharp
 throw new NotImplementedException($"not ported yet: the checker evaluated a term that performs {Describe(instance)}.{op}");
@@ -91,9 +91,9 @@ machinery.
 
 ## Reading
 
-- `dotnet/src/Fun.Compiler/Nbe.Effects.cs:111` — the refusal; `:57` `Term.Tunnel`, `:27`
+- `dotnet/src/Quill.Compiler/Nbe.Effects.cs:111` — the refusal; `:57` `Term.Tunnel`, `:27`
   `TunnelFrame` for how a tunnelled request is already carried
-- `dotnet/src/Fun.Compiler/Elaborator.Effects.cs` — the row/tunneling elaboration, and where the
+- `dotnet/src/Quill.Compiler/Elaborator.Effects.cs` — the row/tunneling elaboration, and where the
   *checker* path arrives
 - `lib/semantic/typecheck/` — the prototype's `EvaluationFailed … (while type checking)` shape
 - [port-effects](port-effects.md) (closed) and [port-stage2-residue](port-stage2-residue.md) —

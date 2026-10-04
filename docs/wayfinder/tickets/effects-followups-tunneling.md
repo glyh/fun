@@ -1,6 +1,6 @@
 ---
 title: Effects follow-ups from the tunneling run
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

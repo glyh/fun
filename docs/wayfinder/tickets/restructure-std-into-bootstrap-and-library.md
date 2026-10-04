@@ -1,11 +1,11 @@
 ---
 title: Restructure std into a bootstrap layer and a library layer
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
 closed_date: 2026-09-27
-resolution: "Closed 2026-09-27: merged as `16f9948`. `std/` is `bootstrap.fun` (the ABI), `list.fun`, `lib.fun`, `type.fun`, and `stage2.fun` as the `std` unit a program imports; `stage1.fun` is gone. Gate 0 build errors / xUnit 187/187 / `conformance: 806 cases, 0 failed`. One compiler change came with it — `export M` re-exports a unit's macros with its roles — which was checked against the record before merging and is a **port gap, not a semantic change**: [export-construct](export-construct.md) ruled it on 2026-09-16. Four of this ticket's decisions were stale because the ABI declaration landed mid-flight; each is recorded below with the reconciliation."
+resolution: "Closed 2026-09-27: merged as `16f9948`. `std/` is `bootstrap.qll` (the ABI), `list.qll`, `lib.qll`, `type.qll`, and `stage2.qll` as the `std` unit a program imports; `stage1.qll` is gone. Gate 0 build errors / xUnit 187/187 / `conformance: 806 cases, 0 failed`. One compiler change came with it — `export M` re-exports a unit's macros with its roles — which was checked against the record before merging and is a **port gap, not a semantic change**: [export-construct](export-construct.md) ruled it on 2026-09-16. Four of this ticket's decisions were stale because the ABI declaration landed mid-flight; each is recorded below with the reconciliation."
 assignee:
 blocked_by: []
 ---
@@ -30,9 +30,9 @@ which is blocked by this one.
 
 ## Where the complaint comes from (measured 2026-09-26)
 
-- **The prelude was never authored as source.** `std/stage1.fun` is byte-for-byte
+- **The prelude was never authored as source.** `std/stage1.qll` is byte-for-byte
   the deleted prototype's `stage1_source` OCaml string literal, and
-  `std/stage2.fun` is its `stage2_source` (the only difference is
+  `std/stage2.qll` is its `stage2_source` (the only difference is
   `import "std/stage1"` for the port's unit loader). Verified:
 
   ```sh
@@ -40,7 +40,7 @@ which is blocked by this one.
   ```
 
   It was cut out of an OCaml `{| … |}` block, which is why line 32 of
-  `std/stage1.fun` is 4,788 characters — the entire `Syntax` ADT as one
+  `std/stage1.qll` is 4,788 characters — the entire `Syntax` ADT as one
   `rec … and … and …;` chain.
 - **Nothing has touched `std/` since 2026-09-18.** The stdlib did not regress; it
   became the only prelude when the prototype was deleted, and there is no longer a
@@ -93,7 +93,7 @@ touch reflection. Making that statement is
    lines of token helpers.
 2. **Role names, split library.** See the target layout below.
 3. **The refactor creates the generic functions.** `rev`, `append`, `map`, `fold`
-   (and `Option`'s `map`/`bind`) land in `std/list.fun` as the library's first cut,
+   (and `Option`'s `map`/`bind`) land in `std/list.qll` as the library's first cut,
    and `std`'s duplicates are rewritten onto them. Accepted cost: this sets the
    library's first public API before the design ticket — but the polymorphism is
    the only thing that can remove the duplication, so the API is created here or
@@ -115,9 +115,9 @@ The `Relationship` note on [declare the bootstrap↔compiler interface
 once](declare-bootstrap-compiler-interface-once.md) says that ticket is *better landed first*, "so
 the restructure then moves files with the interface already declared and guarded". Its measurement
 is now on `main` (`71ce629`): the prelude publishes the compiler's reflection builders — 19 of
-them, in `std/stage1.fun` — and `Reflection.cs` calls them instead of spelling 60 constructor,
+them, in `std/stage1.qll` — and `Reflection.cs` calls them instead of spelling 60 constructor,
 field and leaf-tag names. The reflection boundary this restructure would otherwise have reshaped
-underneath itself is already reduced, and `std/stage1.fun`'s ABI surface is now one builder list
+underneath itself is already reduced, and `std/stage1.qll`'s ABI surface is now one builder list
 plus the `Syntax` nominals.
 
 No declaration was made and no eager check was added — that choice is still open on its own
@@ -126,16 +126,16 @@ ticket, and it does not stand in this ticket's way.
 ## Landed 2026-09-27 — `16f9948`
 
 Merged from `restructure-std-bootstrap-library` (`a78ff74` reformat + prune, `08e1a47` the split,
-`031650c` `type.fun` onto the generics, `8ab591a` cases + README, `b266ccf` a merge of `main`).
+`031650c` `type.qll` onto the generics, `8ab591a` cases + README, `b266ccf` a merge of `main`).
 Gate on the merge: `dotnet build` 0 errors, xUnit **187/187**, `conformance: 806 cases, 0 failed`
 (798 → 806: the eight new pairs under `test/conformance/cases/std/`).
 
 ```text
-std/bootstrap.fun   the ABI: Syntax, its builders, Bool / Option / List  (elaborated with no prelude)
-std/list.fun        rev, append, map, fold
-std/lib.fun         option_map, option_bind
-std/type.fun        the `type` macro and its token helpers
-std/stage2.fun      the `std` unit a program imports
+std/bootstrap.qll   the ABI: Syntax, its builders, Bool / Option / List  (elaborated with no prelude)
+std/list.qll        rev, append, map, fold
+std/lib.qll         option_map, option_bind
+std/type.qll        the `type` macro and its token helpers
+std/stage2.qll      the `std` unit a program imports
 std/README.md
 ```
 
@@ -187,18 +187,18 @@ landed mid-flight:
 ## Target layout
 
 ```text
-std/bootstrap.fun   Bool, Option, List, Syntax — the ABI, and the whole of it.
+std/bootstrap.qll   Bool, Option, List, Syntax — the ABI, and the whole of it.
                     Elaborated with no elaborator (Prelude.Load(file, std: null)).
-std/list.fun        generic functions: rev, append, map, fold; Option's map, bind.
-std/lib.fun         if, i64_to_bool, operators + their fixity, Eq + impls.
-std/type.fun        the `type` macro and its token helpers (today's type_decls, …).
-std/stage2.fun      -> the `std` unit: import the three, export + open them.
+std/list.qll        generic functions: rev, append, map, fold; Option's map, bind.
+std/lib.qll         if, i64_to_bool, operators + their fixity, Eq + impls.
+std/type.qll        the `type` macro and its token helpers (today's type_decls, …).
+std/stage2.qll      -> the `std` unit: import the three, export + open them.
                        Shim pattern already in the file today:
                        Core = import "std/stage1"; export Core; open Core;
 std/README.md       the seam rule, the ABI table, and why the ADT is one chain.
 ```
 
-`std/stage1.fun` is renamed to `std/bootstrap.fun`. The two-stage **mechanism**
+`std/stage1.qll` is renamed to `std/bootstrap.qll`. The two-stage **mechanism**
 stays exactly as it is — bootstrap is still elaborated with no elaborator, library
 units still against it; only the prototype-era names change, per CLAUDE.md's rule
 to name after the domain model rather than the deleted prototype's abbreviations.
@@ -222,7 +222,7 @@ to name after the domain model rather than the deleted prototype's abbreviations
 - `Prelude.Stage1Path` and the doc comments referencing it (`Loader.cs:15,23`,
   `Elaborator.cs:129-132`) follow the rename; `PreludeTests.cs:23`'s expected
   message follows with it.
-- **No build change**: `Fun.Compiler.csproj:10` embeds `..\..\std\*.fun` by glob.
+- **No build change**: `Quill.Compiler.csproj:10` embeds `..\..\std\*.qll` by glob.
 
 ## What to do
 
@@ -232,19 +232,19 @@ to name after the domain model rather than the deleted prototype's abbreviations
    `Elaborator.cs:129`, `PreludeTests.cs:23`).
 2. **Reformat the ADT** one constructor per line, and wrap the rest of the file's
    long lines — the survivors after steps 3–4 are `Span` and `AtomVal`
-   (`stage1.fun:18,24`), `pat_con` (`:65`), and `lib`/`type.fun`'s `tok_is`,
+   (`stage1.qll:18,24`), `pat_con` (`:65`), and `lib`/`type.qll`'s `tok_is`,
    `tok_scope`, `type_name`, `param_decls`, `type_member`, `type_exports`,
    `record_rhs`, `check_records` and the `type_decls` body. Keep the single
    `rec … and …` chain: `Expr` holds `List(Branch)`, `Branch` holds `Pattern`,
    `Pattern` holds `Expr`, so the mutual recursion is load-bearing and splitting
    it into separate `rec` declarations would break `Reflection`.
-3. **Add the generic functions** to `std/list.fun` — `rev`, `append`, `map`,
+3. **Add the generic functions** to `std/list.qll` — `rev`, `append`, `map`,
    `fold`, plus `Option`'s `map`/`bind` — then rewrite `std`'s duplicates onto
    them and delete `tok_rev`, `groups_rev`, `tok_append`, `append_decls`.
 4. **Delete `pat_var`, `id_eq`, `id_name`.** Note the ordering dependency:
    `i64_to_bool` can only leave the bootstrap once `Syntax.id_eq` is gone, since
    `id_eq` is its only bootstrap consumer. `i64_to_bool` has 2 non-`std` uses, so
-   it lands in `std/lib.fun`, not the bootstrap.
+   it lands in `std/lib.qll`, not the bootstrap.
 5. **The executable ABI is a sibling ticket, not this one.**
    [Declare the bootstrap↔compiler interface once](declare-bootstrap-compiler-interface-once.md)
    turns the table above into one declaration resolved at load, and should land
@@ -263,9 +263,9 @@ to name after the domain model rather than the deleted prototype's abbreviations
 
 ## Acceptance
 
-- `dotnet build` succeeds; `dotnet test test/Fun.Tests` and the conformance suite
+- `dotnet build` succeeds; `dotnet test test/Quill.Tests` and the conformance suite
   are green, with the conformance count up by the new `std` cases.
-- `std/stage1.fun` no longer exists; **no name in the ABI table changed**.
+- `std/stage1.qll` no longer exists; **no name in the ABI table changed**.
 - The ADT is one constructor per line, and no other line in `std/` exceeds ~100
   characters.
 - `tok_rev`, `groups_rev`, `tok_append`, `append_decls`, `pat_var`, `id_eq`,
@@ -273,12 +273,12 @@ to name after the domain model rather than the deleted prototype's abbreviations
 
 ## Reading
 
-- `src/Fun.Compiler/Prelude.cs` — the two-stage special case (`:22`, `:28-29`,
+- `src/Quill.Compiler/Prelude.cs` — the two-stage special case (`:22`, `:28-29`,
   `:32`, `:58`); `Loader.cs:32,126`; `Elaborator.cs:129-132`
-- `src/Fun.Compiler/Reflection.cs:25-61` (the nominals) and `:100-104` (the throw)
-- `src/Fun.Compiler/QuoteHoles.cs:27,56`; `src/Fun.Expand/Expander.Macros.cs:97,129,131`;
-  `src/Fun.Expand/Enforest.Macros.cs:59,62`; `src/Fun.Expand/Enforest.Roles.cs:566`
-- `src/Fun.Expand/Expander.Roles.cs:10-22` and `src/Fun.Compiler/Elaborator.cs:151`
+- `src/Quill.Compiler/Reflection.cs:25-61` (the nominals) and `:100-104` (the throw)
+- `src/Quill.Compiler/QuoteHoles.cs:27,56`; `src/Quill.Expand/Expander.Macros.cs:97,129,131`;
+  `src/Quill.Expand/Enforest.Macros.cs:59,62`; `src/Quill.Expand/Enforest.Roles.cs:566`
+- `src/Quill.Expand/Expander.Roles.cs:10-22` and `src/Quill.Compiler/Elaborator.cs:151`
   — what the compiler provides, so what is *not* ABI
-- `test/conformance/cases/README.md`, `test/Fun.Tests/PreludeTests.cs:23`
+- `test/conformance/cases/README.md`, `test/Quill.Tests/PreludeTests.cs:23`
 - `git show 37b41f1^:lib/semantic/typecheck/elab_prelude.ml` — the transplant origin

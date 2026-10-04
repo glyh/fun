@@ -1,6 +1,6 @@
 ---
 title: A closure capture gives two answers — conversion says equal, type-case says different
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed
@@ -38,7 +38,7 @@ programs** on `ae7ff62`. Every other site that audit probed came back innocent; 
 
 ## The two programs
 
-```fun
+```quill
 { Set = fn(Elem : Type, cmp : Elem -> Elem -> Bool) { module {
               pub type T = Leaf | Node(T, Elem, T);
               pub lt = fn(x : Elem, y : Elem) : Bool { cmp(x, y) } } };
@@ -48,7 +48,7 @@ programs** on `ae7ff62`. Every other site that audit probed came back innocent; 
   g(b.Leaf) }
 ```
 
-```fun
+```quill
 { /* the same prelude as above */
   mkset = fn() { Set(I64, fn(x : I64, y : I64) { x < y }) };
   a = mkset(); b = mkset();
@@ -70,10 +70,10 @@ the first hides: the two paths are asked about the same two types in the same pr
 twice, so `a` and `b` capture two distinct closure objects.
 
 - **Conversion says equal.** `Unify` eta-applies a closure — `case (_, Value.VLam b)` at
-  `src/Fun.Compiler/Unify.cs:48` applies the left value and the closure's body to the same fresh
+  `src/Quill.Compiler/Unify.cs:48` applies the left value and the closure's body to the same fresh
   variable, so the two closure objects are compared extensionally.
 - **A type-case says different.** Matching a nominal head goes through `SameInstance`
-  (`src/Fun.Compiler/Nbe.Generative.cs:52-76`), which has arms for `VNominal`, `VRef`, `VEffect`,
+  (`src/Quill.Compiler/Nbe.Generative.cs:52-76`), which has arms for `VNominal`, `VRef`, `VEffect`,
   `VAtom`, `VAtomTy`, `VU`, `VProd` and `VProdTy` — and no λ arm at all, so a closure reaches
   `default: return false` and is equal only by `ReferenceEquals`, the function's first line.
 
@@ -166,11 +166,11 @@ replacing the arm with `return true`: both controls then answer `1`, so they gen
 
 ## Reading
 
-- `src/Fun.Compiler/Nbe.Generative.cs:52-76` — `SameInstance` and its `default` arm
-- `src/Fun.Compiler/Unify.cs:48` — the λ arm that eta-applies
+- `src/Quill.Compiler/Nbe.Generative.cs:52-76` — `SameInstance` and its `default` arm
+- `src/Quill.Compiler/Unify.cs:48` — the λ arm that eta-applies
 - [nominal identity is applicative by purity](nominal-identity-applicative-by-purity.md) — the
   decision this generalises, and the model's `a.union(x_from_a, y_from_b)` instance
 - [identity must survive the pipeline's re-evaluation](port-identity-survives-reevaluation.md) — the
   audit that found it, and the per-site innocences
-- the auditor's probes were scratch (`/tmp/identity-audit/p4.fun`, `p5.fun`, `p6.fun`); the two
+- the auditor's probes were scratch (`/tmp/identity-audit/p4.qll`, `p5.qll`, `p6.qll`); the two
   programs above are their durable form

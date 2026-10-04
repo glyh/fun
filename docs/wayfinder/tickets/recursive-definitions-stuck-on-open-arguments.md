@@ -1,6 +1,6 @@
 ---
 title: Recursive definitions no longer unfold on open arguments at check time
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -48,7 +48,7 @@ The checker-budget implementation (2026-09-14).
 the checker's evaluation budget; exhausting the budget is an error.** Same
 budget and same error as the rest of type checking (and macro expansion, M5).
 
-```fun
+```quill
 rec double = fn(n) { n + n };
 f : (n : I64) -> Vec(double(n)) -> Vec(n + n)   // ok: double(n) unfolds to n + n
 g : (n : I64) -> Vec(fact(n)) -> I64            // error: evaluation budget exceeded, calling fact
@@ -95,7 +95,7 @@ work budget.**
    fixpoints with the same body (`fact(n)` vs `fact2(n)`) is a budget error in
    well under a second.
 
-```fun
+```quill
 rec fact : I64 -> I64 can {} = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } };
 g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }   // ok, no unfolding
 ```

@@ -6,7 +6,7 @@
 
 ## Goal
 
-The planned macro system should be a first-class, hygienic, type-integrated extension mechanism for `fun`. It should not make the language Lisp-shaped. Instead, it should preserve regular surface syntax while giving users the same kind of extensibility that Racket gets from syntax objects, phases, hygienic expansion, and compile-time computation.
+The planned macro system should be a first-class, hygienic, type-integrated extension mechanism for `quill`. It should not make the language Lisp-shaped. Instead, it should preserve regular surface syntax while giving users the same kind of extensibility that Racket gets from syntax objects, phases, hygienic expansion, and compile-time computation.
 
 The important design direction is not merely "macros rewrite syntax before typechecking." The interesting goal is a macro/typechecker system where macro expansion and type elaboration can communicate, suspend, resume, and contribute information to each other in a predictable way.
 
@@ -23,7 +23,7 @@ After a closer read, the TURNSTILE paper and Klister should be used for differen
 
 - TURNSTILE is the better source for the rule-level interface: expansion computes both an erased term and type information, checking rules consume expected types, type operations such as equality/subtyping are overridable hooks, and type-directed rewrites can implement features such as local inference, ADTs, pattern matching, and typeclass-style dictionary insertion.
 - Klister is the better source for the operational substrate: problem-aware macro APIs, expansion variables, type metavariables, blocked macro continuations, task scheduling, and deterministic stuck-macro behavior.
-- The practical `fun` path should keep Stage 8 problem awareness separate from Stage 9 read-only expected-type reflection, then use the Stage 10 scheduler only for examples that truly require mutually recursive expansion and elaboration.
+- The practical `quill` path should keep Stage 8 problem awareness separate from Stage 9 read-only expected-type reflection, then use the Stage 10 scheduler only for examples that truly require mutually recursive expansion and elaboration.
 - Type-providing macros should not be treated as ordinary `Syntax -> Syntax` rewrites with a side channel; they need an explicit result form that records the provided type, the delayed expansion or typed fragment, and the consistency obligation checked later.
 
 ## Core principles
@@ -56,7 +56,7 @@ Generated identifiers should not accidentally capture or be captured. Intentiona
 
 ### 3. Regular syntax via enforestation
 
-The macro system should respect `fun`'s normal syntax rather than forcing all extension points into Lisp syntax.
+The macro system should respect `quill`'s normal syntax rather than forcing all extension points into Lisp syntax.
 
 Honu's model is the most relevant reference: parse raw tokens into a less-committed syntax stream/tree, then run an **enforestation** pass that uses the current macro/operator environment to group tokens into syntax objects. This allows macros to define:
 
@@ -66,7 +66,7 @@ Honu's model is the most relevant reference: parse raw tokens into a less-commit
 - block forms and domain-specific notation,
 - DSL sublanguages that still compose with the host language.
 
-For `fun`, this suggests the parser should eventually split into at least two layers:
+For `quill`, this suggests the parser should eventually split into at least two layers:
 
 ```text
 source text
@@ -84,11 +84,11 @@ Macros should fit the language model instead of being an external compiler plugi
 
 A baseline shape from Klister is:
 
-```fun
+```quill
 Syntax -> Macro Syntax
 ```
 
-But for `fun`, the long-term form should probably be richer because macros should know what kind of expansion is being requested and may produce typed information. Useful first-class compile-time concepts include:
+But for `quill`, the long-term form should probably be richer because macros should know what kind of expansion is being requested and may produce typed information. Useful first-class compile-time concepts include:
 
 - `Syntax` — hygienic syntax objects,
 - `Macro A` — compile-time computation with controlled effects,
@@ -110,7 +110,7 @@ The same macro name could expand differently when used as:
 - a pattern,
 - a module item.
 
-This matches `fun` well because the existing compiler is already bidirectional: checking an expression against an expected type is different from inferring a type. A macro in expression position should be able to see the expected type when one exists.
+This matches `quill` well because the existing compiler is already bidirectional: checking an expression against an expected type is different from inferring a type. A macro in expression position should be able to see the expected type when one exists.
 
 Example behavior from Klister:
 
@@ -153,7 +153,7 @@ Then run all unblocked tasks until either:
 - all expansion/type problems are solved, or
 - every remaining task is blocked, which is an error or ambiguity.
 
-The existing `fun` elaborator already has metavariables and bidirectional checking, so this can potentially build on the current `MetaContext` idea. The new part would be expansion variables and a scheduler shared by expansion and elaboration.
+The existing `quill` elaborator already has metavariables and bidirectional checking, so this can potentially build on the current `MetaContext` idea. The new part would be expansion variables and a scheduler shared by expansion and elaboration.
 
 ## Module and phase implications
 
@@ -161,7 +161,7 @@ A serious macro system needs a phase-aware module system.
 
 Compile-time dependencies should not become runtime dependencies. Imports need to say whether they are used at runtime, compile time, or shifted phases. Klister uses phase-shifted imports such as importing a module at phase 1 so its macros are available while expanding the current module.
 
-For `fun`, this affects `Core_loader` and module elaboration:
+For `quill`, this affects `Core_loader` and module elaboration:
 
 - module files need separate expansion, elaboration, and evaluation caches;
 - macro definitions must be evaluated at compile time;
@@ -196,7 +196,7 @@ The current staged source layout maps well to this, but new layers would likely 
 - `lib/loader/` must become phase-aware.
 - `Surface.t` may become either the post-expansion AST or be bypassed for some typed macro expansions that directly produce core.
 
-## Design fit with `fun`
+## Design fit with `quill`
 
 This macro direction fits the language's current philosophy:
 
@@ -227,7 +227,7 @@ This macro direction fits the language's current philosophy:
    If expansion/typechecking deadlocks because tasks are mutually blocked, diagnostics need to explain which syntax and type problems are waiting on each other.
 
 7. **Can expansion remain deterministic?**
-   Klister's design goal is that expansion results do not depend on task scheduling order. `fun` should preserve that property if expansion and elaboration interleave.
+   Klister's design goal is that expansion results do not depend on task scheduling order. `quill` should preserve that property if expansion and elaboration interleave.
 
 ## Suggested implementation path
 

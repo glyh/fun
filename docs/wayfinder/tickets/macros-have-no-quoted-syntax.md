@@ -1,6 +1,6 @@
 ---
 title: Macros have no quoted syntax
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -20,7 +20,7 @@ keeps the scopes of its definition site, pruned of the binding forms enclosing
 the quote. An id built from a bare name — `datum->syntax` with no context — has
 an empty scope set and is unbound.
 
-`fun` has neither half. The only way to build an id is from a string:
+`quill` has neither half. The only way to build an id is from a string:
 `Syntax.var(name)` is `RawVar(None, new_id(name))` (`elab_prelude.ml:149`), an
 empty scope set. Such an id cannot resolve in the first tier, so the
 implementation added a second one — an unresolved id keeps its written name and

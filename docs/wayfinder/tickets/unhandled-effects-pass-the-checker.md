@@ -1,6 +1,6 @@
 ---
 title: Unhandled effects pass the checker
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -21,7 +21,7 @@ top-level expression's residual row is empty.
 
 Probed on main (35baa3c):
 
-```fun
+```quill
 { effect Exc = sig { raise : I64 -> I64 }; perform Exc.raise(1) }
 // run time: unhandled effect Exc.raise
 

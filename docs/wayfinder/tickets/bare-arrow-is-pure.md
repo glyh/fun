@@ -1,6 +1,6 @@
 ---
 title: A bare arrow is pure
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -20,11 +20,11 @@ blocked_by:
 - `A ~> B` is shorthand for `A -> B can _`, defined in the prelude as a
   template, not a compiler rule:
 
-  ```fun
+  ```quill
   pub infix (~>) 0 Right ($a, $b) -> $a -> $b can _
   ```
 
-```fun
+```quill
 sqr     : I64 -> I64                            -- pure
 counter : Unit ~> Ref(I64)                      -- effectful, row inferred
 map     : (A ~> B) -> List(A) ~> List(B)        -- polymorphic higher-order
@@ -40,7 +40,7 @@ nominal declared in it is applicative
 ([nominal-identity-applicative-by-purity](nominal-identity-applicative-by-purity.md)).
 The unwritten case should be the safe one.
 
-```fun
+```quill
 merge_twice = fn(mk : Unit -> SetSig) ->
   do a = mk(()); b = mk(()); a.union(a.empty, b.empty) end
 ```

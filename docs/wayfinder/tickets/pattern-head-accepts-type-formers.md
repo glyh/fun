@@ -1,6 +1,6 @@
 ---
 title: Any function returning a nominal type is accepted as a pattern-head type
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed

@@ -1,6 +1,6 @@
 ---
 title: Every elaborator error names the form it was at
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -13,7 +13,7 @@ blocked_by: []
 # Every elaborator error names the form it was at
 
 Decided 2026-10-01, from the fog item "diagnostics polish boundary" in
-[the map](../fun-design-map.md), whose measurement had said "no consumer needs a position yet". The
+[the map](../quill-design-map.md), whose measurement had said "no consumer needs a position yet". The
 user's answer was the tie-breaker: `--file` **is** the consumer — it is how a probe is read — and a
 message without a position makes the reader hunt for the form.
 
@@ -21,7 +21,7 @@ message without a position makes the reader hunt for the form.
 
 The position machinery exists and one path already prints it:
 
-- `Budget._site` (`src/Fun.Compiler/Budget.cs:23`) is a `(string Mode, SourceSpan Span)?` set by
+- `Budget._site` (`src/Quill.Compiler/Budget.cs:23`) is a `(string Mode, SourceSpan Span)?` set by
   `Budget.At` and restored on unwind; `Where()` (`:50`) renders it as `" while {Mode} at {Span}"`.
 - `Elaborator.At` (`Elaborator.cs:180`) wraps `Infer`/`Check`/`ReadType` and already appends
   `Where()` — but **only** for `EvaluationFailed`:

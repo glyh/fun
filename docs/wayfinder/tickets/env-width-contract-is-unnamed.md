@@ -1,6 +1,6 @@
 ---
 title: Elaborator and evaluator agree on binding-list env width only by parallel arithmetic
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
   - severity:soundness

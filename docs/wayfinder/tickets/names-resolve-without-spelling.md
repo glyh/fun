@@ -1,6 +1,6 @@
 ---
 title: Path heads, traits and effects resolve without spelling
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

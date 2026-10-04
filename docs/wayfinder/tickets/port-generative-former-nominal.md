@@ -17,9 +17,9 @@ Found by [port-nominal-identity](port-nominal-identity.md)'s fork on 2026-09-20,
 not ported yet: sealing a generative nominal that is not bound as a module member
 ```
 
-(`dotnet/src/Fun.Compiler/Elaborator.Generative.cs:52`) for
+(`dotnet/src/Quill.Compiler/Elaborator.Generative.cs:52`) for
 
-```fun
+```quill
 { Mk = fn(u : Unit) { module {
       table = ref(0);
       pub type Box(A) = Bx(A);
@@ -114,5 +114,5 @@ What it did establish, from its own words, all of which sharpens the fix:
 
 Resume with `resume: "generative-former"` (its context still holds the traces and the
 reasoning). Its full transcript is at
-`/tmp/pi-subagents-1000/home-lyh-pullground-fun/01a0d1e2-8670-75e3-a2ef-72dadaf596b5/tasks/6cd6cf45-5d98-492.output`
+`/tmp/pi-subagents-1000/home-lyh-pullground-quill/01a0d1e2-8670-75e3-a2ef-72dadaf596b5/tasks/6cd6cf45-5d98-492.output`
 — under `/tmp`, so treat it as a convenience and this section as the record.

@@ -1,6 +1,6 @@
 ---
 title: `export` — re-export a module's or enum's members
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

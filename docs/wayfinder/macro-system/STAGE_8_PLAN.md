@@ -9,7 +9,7 @@
 
 Let macros declare their syntactic return kind, so the elaborator can validate that macros are used in the correct context. The kind is determined by the macro's **return type** — either via inference (best effort) or explicit annotation.
 
-```fun
+```quill
 macro twice(x) -> Syntax.ap(Syntax.ap(Syntax.var("+"), x), x)   -- inferred: Expr
 macro bind(x) : Decl -> multi pub x = 0 end                      -- annotated: Decl
 ```

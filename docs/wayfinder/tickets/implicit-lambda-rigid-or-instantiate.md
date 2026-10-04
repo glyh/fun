@@ -18,7 +18,7 @@ The negative-result route the original framing left open is closed: the corners 
 
 ## The two programs, and what each runner does (integrator, `4cb7e4f`)
 
-```fun
+```quill
 -- probe1: the codomain continues *implicitly*
 { trait Size(A) = sig { size : A -> I64 }; impl Size(I64) = module { size = fn(x) { 8 } };
   g : [A : Type] -> [B : Size] -> B -> I64 = fn[A : Type, B : Type](b : B) { Size.size(b) };
@@ -30,7 +30,7 @@ The negative-result route the original framing left open is closed: the corners 
 | OCaml | `8` |
 | port | **fails**: `missing implementation of `Size`` |
 
-```fun
+```quill
 -- probe2b: the codomain is not a Pi at all
 { f : [A : Type] -> I64 = fn[T : Type] { match (T) { I64 => 1, _ => 0 } }; f[Bool] }
 ```
@@ -78,7 +78,7 @@ committed today (the port fails them — convention 8), and they are **not** div
 *prototype* answers them correctly. The explicit-Pi shape is already covered by
 `values/implicit-lambda-argument-inline`; add the two as ordinary cases with the fix, and
 keep the whole gate honest by re-running the 16 cases that motivated it (the type-case
-family, the value-level implicit `[n : I64]`, and `stage2.fun`'s `(==)`/`(!=)`).
+family, the value-level implicit `[n : I64]`, and `stage2.qll`'s `(==)`/`(!=)`).
 
 ---
 
@@ -104,12 +104,12 @@ both:
   (`[A : Type] -> I64 -> ?r`).
 
 The port now decides by **dependency**: `BindsImplicitParameterItself`
-(`dotnet/src/Fun.Compiler/Elaborator.Implicits.cs`) binds the parameter itself when the
+(`dotnet/src/Quill.Compiler/Elaborator.Implicits.cs`) binds the parameter itself when the
 expected domain is not `Type` (dictionary / effect-row / value parameter), or when the
 codomain, probed at a fresh meta, `Unify.Mentions` the parameter. Otherwise it instantiates.
 
 That gate was chosen because the naive alternative broke **16** suite cases — the whole
-type-case family, the value-level implicit case, and `(==)`/`(!=)` in `stage2.fun` — which
+type-case family, the value-level implicit case, and `(==)`/`(!=)` in `stage2.qll` — which
 is evidence that both treatments are genuinely needed, not that one is an accident.
 
 ## The corners it does not cover
@@ -141,11 +141,11 @@ inference. Then either:
 
 ## Reading
 
-- `dotnet/src/Fun.Compiler/Elaborator.Implicits.cs` — `BindsImplicitParameterItself`, the
+- `dotnet/src/Quill.Compiler/Elaborator.Implicits.cs` — `BindsImplicitParameterItself`, the
   comment above it is the rationale
 - [an implicit lambda checked against a function type instantiates](port-generalise-under-check.md)
   — the ruling, the corrected cause, and the hazard
-- `dotnet/std/stage2.fun:23-24` — the `(==)`/`(!=)` definitions the naive version broke
+- `dotnet/std/stage2.qll:23-24` — the `(==)`/`(!=)` definitions the naive version broke
 
 ## Resolution (2026-09-25) — closed
 
@@ -175,6 +175,6 @@ real shared cases.
   `values/implicit-lambda-codomain-continues-implicitly`, `values/implicit-lambda-codomain-not-pi`.
 - **The 16 cases that motivated the gate are all green**, by the full runs: the type-case
   family (`core-072..084`, `elab-041`), `values/type-case-refines-variable`, the value-level
-  implicit family, and `stage2.fun`'s `(==)`/`(!=)`. The domain-not-`Type` branch still binds
+  implicit family, and `stage2.qll`'s `(==)`/`(!=)`. The domain-not-`Type` branch still binds
   those rigidly, so the narrowing did not reach them — which was the thing to check.
 - Verified by the integrator after merging, not taken on the fork's word.

@@ -1,6 +1,6 @@
 ---
 title: Mutually-recursive record type declarations
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 status: closed
 closed_date: 2026-09-15
 resolution: Implemented 2026-09-15 (branch recursive-records). A rec binding whose value is a struct type (under any parameters) mints a record identity; its body sees the name as a recursive occurrence (Core.RecOcc / VRecOcc) that unfolds on demand to the finished value and compares by identity. rec A = … and B = … groups (RecGroupBinding / LetRecGroup) hold struct types. type X = struct { … } and rewrite_record_self_refs are deleted.
@@ -106,10 +106,10 @@ doesn't have.
 | OCaml objects / polymorphic variants, TypeScript | structural | **equirecursive** `μ`, compared coinductively (Amadio–Cardelli 1993). TypeScript additionally caps nesting depth heuristically. |
 | OCaml `module rec`, SML recursive modules | structural modules | explicit signatures for every member, checked assume-first (Crary–Harper–Puri 1999). Abstract types lead to the "double vision" problem (Dreyer 2007). |
 
-The recursive-module row is the closest analogue, because a `fun` struct *is* a
+The recursive-module row is the closest analogue, because a `quill` struct *is* a
 module.
 
-### The design space, mapped onto `fun`
+### The design space, mapped onto `quill`
 
 1. **Identity at the knot (Go-style iso-recursion).** A recursive record
    declaration mints an identity. `VSelfType` becomes `{ id; args }` and is
@@ -156,7 +156,7 @@ unfolded on demand at field access, construction and unification against a
 struct. Non-recursive records stay structural. Two recursive records with the
 same shape are different types:
 
-```fun
+```quill
 type Numbers = struct { head : I64; tail : Option(Numbers) }
 type Scores  = struct { head : I64; tail : Option(Scores) }
 s : Scores = Scores{ head = 99, tail = None }

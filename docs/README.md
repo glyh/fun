@@ -9,7 +9,7 @@ This directory holds two kinds of documentation, split by purpose:
   what is still *open*, and what is still *fog*. It is organized with the
   wayfinder skill's shape (map → tickets → topics) and is the single
   navigation hub for the project's direction. Start at the
-  [Fun compiler design map](wayfinder/fun-design-map.md).
+  [Fun compiler design map](wayfinder/quill-design-map.md).
 
 - **[`ideas/`](ideas/)** — a catalogue of programming-language design ideas
   gathered from r/ProgrammingLanguages and r/Compilers, scoped by axis (syntax,

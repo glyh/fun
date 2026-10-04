@@ -18,17 +18,17 @@ throws
 not ported yet: an order group named through a unit member's path
 ```
 
-(`dotnet/src/Fun.Expand/Enforest.Roles.cs:343`). Reproduce with two units — `m`
+(`dotnet/src/Quill.Expand/Enforest.Roles.cs:343`). Reproduce with two units — `m`
 declaring the group, `wrapper` re-exporting the module:
 
-```fun
--- deep.unit-m.fun
+```quill
+-- deep.unit-m.qll
 pub order g;
 
--- deep.unit-wrapper.fun
+-- deep.unit-wrapper.qll
 pub M = import "m";
 
--- deep.fun, expect 1
+-- deep.qll, expect 1
 { W = import "wrapper"; infix (@@) W.M.g ($x, $y) { $x }; 1 @@ 2 }
 ```
 
@@ -73,7 +73,7 @@ exports.
   prototype's `unit_path_of`/`unit_member` altogether, so a member could not be resolved
   to the unit it denotes. `UnitSyntax` gained `UnitMembers`, a `pub M = import "m"`
   binding is recorded as one, and `UnitPathOf` gained the recursive `FieldAccess` case.
-  Everything in `Fun.Expand`; no OCaml or prelude source touched.
+  Everything in `Quill.Expand`; no OCaml or prelude source touched.
 - Cases added (`imports/`): `deep` (this ticket's three-file case, ordinary — the
   prototype passes it), `order-group-missing` (the path's final member is not an order
   group → `error`, the prototype refuses too), `order-through-binder` (see below).

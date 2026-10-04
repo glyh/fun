@@ -1,6 +1,6 @@
 ---
 title: A type-case pattern cannot express what an impl head can
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -28,7 +28,7 @@ Every line below was run on the Debug runner:
 
 ```sh
 dotnet build
-dotnet test/Fun.Conformance/bin/Debug/net10.0/Fun.Conformance.dll --file /tmp/probe.fun
+dotnet test/Quill.Conformance/bin/Debug/net10.0/Quill.Conformance.dll --file /tmp/probe.qll
 ```
 
 ## Measured — the same form in the two positions
@@ -52,7 +52,7 @@ dotnet test/Fun.Conformance/bin/Debug/net10.0/Fun.Conformance.dll --file /tmp/pr
 
 Reproducers for the four that are `❌` only in type-case:
 
-```fun
+```quill
 # 1. a free name in a nominal argument position does not bind
 { f : Type -> I64 = fn(T) { match (T) { Option(A) => 1, _ => 0 } }; f(Option(I64)) }
 #   -> ELAB unbound variable: A
@@ -87,7 +87,7 @@ They are **incomparable**, not one-poorer:
   refused *again* as "must name a type" when something of that spelling is in scope.
 
 The refusing check is `ElaborateNominalHeadPattern` → `TypeHead`
-(`src/Fun.Compiler/Elaborator.Patterns.cs:379`, `:395-416`): a head is accepted only
+(`src/Quill.Compiler/Elaborator.Patterns.cs:379`, `:395-416`): a head is accepted only
 when its type is `VU` **and** its value is a `Value.VNominal` (or a projection on a
 generative module's sealed binder). Struct types are `VStruct`, so a struct type name is
 not a head — which is why `struct { y : p; _ }` exists as a separate pattern form.

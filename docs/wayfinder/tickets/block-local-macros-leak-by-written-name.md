@@ -1,6 +1,6 @@
 ---
 title: Block-local macros leak by written name
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

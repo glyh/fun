@@ -16,14 +16,14 @@ worse than a gap: the port **crashes** on it. Verified by the integrator 2026-09
 
 ## The program
 
-```fun
+```quill
 (fn(X : Type) { A = X; rec U = fn(B : Type) { enum { C(A) } }; U })(I64)
 ```
 
 | runner | output |
 |---|---|
 | OCaml | `<lam>` — accepted |
-| port | **unhandled** `Fun.Compiler.UnifyException: a variable outside the meta's spine escapes into its solution` (`Unify.cs:161` ← `Unify.Enum.cs:42` ← `Elaborator.Enum.cs:72`), and the conformance runner dies |
+| port | **unhandled** `Quill.Compiler.UnifyException: a variable outside the meta's spine escapes into its solution` (`Unify.cs:161` ← `Unify.Enum.cs:42` ← `Elaborator.Enum.cs:72`), and the conformance runner dies |
 
 The same happens with a nominal payload (`T = enum { K(X) }; rec U = fn(A : Type) { enum { C(T) } }`).
 
@@ -58,7 +58,7 @@ sits *after* `CloseOver`, so it is masked by it.
 
 ## Reading
 
-- `dotnet/src/Fun.Compiler/Elaborator.Enum.cs` (`InferEnum`, `CloseOver`),
+- `dotnet/src/Quill.Compiler/Elaborator.Enum.cs` (`InferEnum`, `CloseOver`),
   `Elaborator.RecTypes.cs:62`/`:132`, `Unify.Enum.cs:42`, `Unify.cs:161`
 - the prototype's `capture_payloads`
 
@@ -83,13 +83,13 @@ The next step, as it left it:
    name-based prediction and the use-based computation cannot disagree.
 3. Add the shared case(s) (the program above, preferring an observable `I64`; plus the
    nominal-payload variant), then catch `UnifyException` in
-   `dotnet/test/Fun.Conformance/Program.cs` so an invariant failure is a **failed case**
+   `dotnet/test/Quill.Conformance/Program.cs` so an invariant failure is a **failed case**
    rather than a dead run, and re-run the full suite — captures feed identity, so the
    `values/nominal-*` and `values/rec-*` cases are the ones at risk.
 
-Files it identified: `dotnet/src/Fun.Compiler/Elaborator.Enum.cs` (~55-72),
+Files it identified: `dotnet/src/Quill.Compiler/Elaborator.Enum.cs` (~55-72),
 `Elaborator.RecTypes.cs` (`CompletePending` ~62, `PredictCaptures` ~132),
-`dotnet/test/Fun.Conformance/Program.cs`.
+`dotnet/test/Quill.Conformance/Program.cs`.
 
 ## Resolution (2026-09-24) — closed
 

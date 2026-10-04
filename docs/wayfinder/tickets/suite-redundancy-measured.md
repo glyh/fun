@@ -1,6 +1,6 @@
 ---
 title: The conformance suite's redundancy, measured
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: open
@@ -24,12 +24,12 @@ then verified its findings independently, which is how three of them were caught
 | xUnit's slowest single test | **75 ms**; most `< 1 ms` |
 | xUnit *run* wall clock | **11 s** — VSTest's per-test overhead (~50 ms × 208), not the tests |
 | `dotnet test` with a rebuild / `--no-build` | 16.8 s / 13.2 s |
-| `dotnet run --project test/Fun.Conformance` | 11.7 s for 5.6 s of work — a 6 s build |
+| `dotnet run --project test/Quill.Conformance` | 11.7 s for 5.6 s of work — a 6 s build |
 | one case in its own process | 0.60–0.85 s, all host + JIT (`DOTNET_TieredCompilation=0` is *slower*) |
 
 Deleting cases is therefore a weak lever: **all 367 `core-*` cases together are ≈ 2 s.** The costs
 are (a) **rebuilds** — build once and then invoke the built DLLs (`dotnet test --no-build`, and
-`Fun.Conformance.dll` directly instead of `dotnet run --project`); (b) **VSTest's ~10 s** for 208
+`Quill.Conformance.dll` directly instead of `dotnet run --project`); (b) **VSTest's ~10 s** for 208
 tests against 5.8 ms/case in the conformance runner — which is the repo's own rule anyway: *a test
 that is only "source → value or error" belongs in `cases/` and only there*; (c) **0.6 s per probe
 process**, which a REPL session amortises.
@@ -37,7 +37,7 @@ process**, which a REPL session amortises.
 ## The redundancy, measured
 
 - **10 program texts (comments stripped) are shared by 2+ cases.**
-  - **4 pairs are deliberate**: their programs are identical but their `.unit-*.fun` differ (2–3
+  - **4 pairs are deliberate**: their programs are identical but their `.unit-*.qll` differ (2–3
     lines), so the *unit* is the subject —
     `trait-generic-impl-bound-in-imported-module`, `unit-macro-sees-earlier-binding`,
     `port-macro-private`, `trait-generic-impl-bound-through-import`. **These stay**; a text-level
@@ -178,14 +178,14 @@ re-verified by the integrator on `86b4166` (the per-cluster *readings* are the f
 by hand for cluster 1 only — treat the others as a careful reading, not a measurement).
 
 **Item 1's scope is larger than the ticket says, and its shape is different.** The `elab-NNN`
-numbers live in **two** areas — `ls */elab-*.fun` gives **179** in `elaborate/` and **78** in
+numbers live in **two** areas — `ls */elab-*.qll` gives **179** in `elaborate/` and **78** in
 `values/` — and several of the clusters named here (`is_zeroish`, `sig-arg`) are `values/` cases.
 More importantly, the premise that a byte-check can find them is **false**:
 
 ```
-md5sum elaborate/elab-*.fun values/elab-*.fun | awk '{print $1}' | sort | uniq -d | wc -l   → 0
+md5sum elaborate/elab-*.qll values/elab-*.qll | awk '{print $1}' | sort | uniq -d | wc -l   → 0
 # whitespace-collapsed, both areas, same result                                                    → 0
-find test/conformance/cases -name '*.unit-*.fun' | wc -l                                    → 69
+find test/conformance/cases -name '*.unit-*.qll' | wc -l                                    → 69
 ls test/conformance/cases/elaborate/ | grep -c unit                                          → 0
 ```
 
@@ -238,7 +238,7 @@ grep -n 'Driver\.Describe\|Driver\.Run(' *.cs | wc -l → 16 call sites: 9 asser
 | **(b)** inspects internals (`CLAUDE.md` names them: token/syntax shapes, reflection round trips, decision trees, budget accounting, `Value`/`Term` identity, exact messages) | 112 | 196 |
 | **(c)** borderline — needs a decision | 3 | 5 |
 
-Bucket (a), complete: `InterleavingTests.AMacroBodySeesAnEarlierBinding` (needs a `.unit-u.fun`, the
+Bucket (a), complete: `InterleavingTests.AMacroBodySeesAnEarlierBinding` (needs a `.unit-u.qll`, the
 unit is inline in C# today), `MacroTests.AQuoteFillsItsHoles`, `MemberTests.
 AnOpenNameMayBeShadowedByAPublicMember`, `PreludeTests.StdIsTheUnitWhichReExportsTheBootstrap`,
 `TraitTests.{OpeningAModuleTwiceIsNotAnAmbiguity, TraitOpChoosesByArgumentType,
@@ -270,7 +270,7 @@ table merged away.
 
 ## Decided 2026-10-01: three twins deleted, row 18 kept
 
-Ruled on and executed the same day. **Deleted `elaborate/elab-{093,094,095}.fun` + `.expect`** (six
+Ruled on and executed the same day. **Deleted `elaborate/elab-{093,094,095}.qll` + `.expect`** (six
 files): each was one of a pair pinning the same rule with only a cosmetic spelling difference, and
 the surviving members (`135`, `136`, `137`) keep the canonical `;`-terminated spelling. Suite
 `961 → 958 cases, 0 failed`.

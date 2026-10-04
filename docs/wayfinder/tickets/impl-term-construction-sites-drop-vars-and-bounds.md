@@ -1,11 +1,11 @@
 ---
 title: Three more impl-term construction sites drop Vars and Bounds
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
 closed_date: 2026-09-28
-resolution: Closed 2026-09-28. The one route the probe found reachable *and* observable is fixed: both `BindingTerm.Impl` constructions in `Unify.RenameEntry` (`Unify.cs:271-272`) now carry `i.Vars, i.Bounds` — two lines. Probes: `a` and `ab` went from `missing implementation of \`Size\`` to `VALUE 3` / `VALUE 5`, `af` from failing to `VALUE 3`, and the controls `aprime` (the same route, non-generic), `a2` and `af_direct` stayed green — `aprime` is what proves the route still runs. Suite `906` → **`907` cases, 0 failed**; xUnit `206`; case `values/trait-generic-impl-through-function-application`. The other two sites (`ElaborateImplItem`, `InferExport`) were **not** touched, as the probe's verdict requires: they are reachable but their loss is masked, so a carry there is unverifiable. Two residues recorded rather than chased — this ticket's acceptance text said `ab` answers `3` when it answers `5` (its `impl Size(I64)` body returns 5 and `Some(5)` routes through it), and `a3.fun` (an explicit `Pick[Unit]`) still errors, unmeasured as to whether it is another site or an intended error.
+resolution: Closed 2026-09-28. The one route the probe found reachable *and* observable is fixed: both `BindingTerm.Impl` constructions in `Unify.RenameEntry` (`Unify.cs:271-272`) now carry `i.Vars, i.Bounds` — two lines. Probes: `a` and `ab` went from `missing implementation of \`Size\`` to `VALUE 3` / `VALUE 5`, `af` from failing to `VALUE 3`, and the controls `aprime` (the same route, non-generic), `a2` and `af_direct` stayed green — `aprime` is what proves the route still runs. Suite `906` → **`907` cases, 0 failed**; xUnit `206`; case `values/trait-generic-impl-through-function-application`. The other two sites (`ElaborateImplItem`, `InferExport`) were **not** touched, as the probe's verdict requires: they are reachable but their loss is masked, so a carry there is unverifiable. Two residues recorded rather than chased — this ticket's acceptance text said `ab` answers `3` when it answers `5` (its `impl Size(I64)` body returns 5 and `Some(5)` routes through it), and `a3.qll` (an explicit `Pick[Unit]`) still errors, unmeasured as to whether it is another site or an intended error.
 assignee:
 blocked_by: []
 ---
@@ -40,10 +40,10 @@ One program per route, with controls. Verdicts:
 |---|---|---|
 | `Unify.RenameEntry` | **reachable and observable** | a generic impl inside a module returned through a lambda-plus-binder spine, `open`ed and then used, fails `ELAB missing implementation of \`Size\``. `Unify.cs:271-272` builds `BindingTerm.Impl` without the fields; reached via `:118` → `:191` → `:255`. Controls rule out the lambda/quote machinery: the same spine with a *non-generic* impl works, the same module at top level works, and opening it directly works. |
 | `ElaborateImplItem` | reachable but **invisible** | the term drops at `Elaborator.Traits.cs:284` while the entry carries at `:292`; masked because an application's result is re-evaluated from the quoted closure type (`Elaborator.cs:601`, `:620`). |
-| `InferExport` | reachable but **invisible** | the term drops at `Elaborator.Export.cs:37`, the entry carries at `:38` from `:74`; same masking. `trait-generic-impl-bound-through-export.fun` passes (`VALUE 5`). |
+| `InferExport` | reachable but **invisible** | the term drops at `Elaborator.Export.cs:37`, the entry carries at `:38` from `:74`; same masking. `trait-generic-impl-bound-through-export.qll` passes (`VALUE 5`). |
 
 **So the work is one site and one line:** add `i.Vars, i.Bounds` to both `BindingTerm.Impl`
-constructions at `Unify.cs:271-272`. Acceptance: the probe's `a.fun` and `ab.fun` answer `3`,
+constructions at `Unify.cs:271-272`. Acceptance: the probe's `a.qll` and `ab.qll` answer `3`,
 while `aprime` (the same route, non-generic), `a2` (top level) and `af_direct` stay green —
 `aprime` is what proves the route still runs.
 
@@ -60,7 +60,7 @@ Two lines at `Unify.cs:271-272`: both constructions of `BindingTerm.Impl` in `Re
 carry `i.Vars, i.Bounds`. The parent fix made those fields **defaulted**, which is what let this
 sit unnoticed — and what makes the fix this small.
 
-Probe table, re-run by the integrator on the merged tree (`/tmp/probe/*.fun`):
+Probe table, re-run by the integrator on the merged tree (`/tmp/probe/*.qll`):
 
 | probe | before | after |
 |---|---|---|
@@ -76,9 +76,9 @@ Suite `906` → **`907` cases, 0 failed**; xUnit `206`; the case is
 
 **Two residues, recorded rather than chased:**
 
-1. The acceptance text here said `ab.fun` answers `3`. It answers `5`: that probe's `impl
+1. The acceptance text here said `ab.qll` answers `3`. It answers `5`: that probe's `impl
    Size(I64)` body returns `5` and its `Some(5)` routes through it. The number in the prose was
    stale, not the program.
-2. `a3.fun` — an explicit `Pick[Unit]` — still errors. It was not in the acceptance list, and
+2. `a3.qll` — an explicit `Pick[Unit]` — still errors. It was not in the acceptance list, and
    whether it is a third site or an intended error is **unmeasured**. A probe comes before any
    fix, which is this ticket's own rule.

@@ -6,7 +6,7 @@
 
 ## Goal
 
-Stage 7 introduces enforestation as the parsing boundary for the redesigned `fun` surface syntax described in `SYNTAX_SPEC.md`.
+Stage 7 introduces enforestation as the parsing boundary for the redesigned `quill` surface syntax described in `SYNTAX_SPEC.md`.
 
 This stage should not try to implement every redesigned syntax form at once. The primary goal is to establish the architecture that future syntax extension can build on:
 
@@ -88,7 +88,7 @@ Implement an expression enforester that supports only:
 
 The first `do`-block slice should accept:
 
-```fun
+```quill
 do
   x = 1
   y = x + 1
@@ -155,7 +155,7 @@ Add built-in first-token dispatch for:
 
 `fn` initially supports:
 
-```fun
+```quill
 fn(x : I64) -> x
 fn(x : I64) do x end
 fn[A : Type](x : A) -> x
@@ -306,7 +306,7 @@ Implement the first constrained syntax-extension bindings:
 
 This phase is deliberately small. The current API is not the final macro syntax:
 
-```fun
+```quill
 operator prefix name(stx) -> ...
 operator infix op precedence left(stx) -> ...
 operator infix op precedence right(stx) -> ...
@@ -356,7 +356,7 @@ Add a macro authoring layer with:
 
 Named syntax definitions should mirror existing `match` branch syntax:
 
-```fun
+```quill
 syntax unless do
 | unless $cond $branch ->
     if $cond do
@@ -378,7 +378,7 @@ end
 
 Prefix operators are removed in this phase. Prefix/head-position extensions use `syntax <head-token> ...` instead. Infix operators remain a separate `operator` form because the enforester needs precedence and associativity before parsing the operator use. Infix operator declarations do not use `| pattern ->` branch matching because the operator is already known; they take direct operand parameters instead:
 
-```fun
+```quill
 operator infix |> 3 left($lhs, $rhs) -> pipe_apply($lhs, $rhs)
 ```
 
@@ -514,7 +514,7 @@ Add declaration-template support with:
 
 Initial `decl` coverage:
 
-```fun
+```quill
 x = expr
 x : Type = expr
 pub x = expr
@@ -525,7 +525,7 @@ pub x : Type = expr
 
 Multi-declaration replacement templates use a declaration-template-only wrapper, `multi ... end`, rather than ordinary expression `do ... end`. This avoids reusing expression-block syntax for a value that should expand to several sibling declarations:
 
-```fun
+```quill
 syntax make_pair do
 | make_pair $x $y ->
     multi
@@ -603,7 +603,7 @@ Stage 7G computed macros are still expression macros. Computed type, pattern, de
 
 Candidate surface examples:
 
-```fun
+```quill
 macro inc(stx) ->
   Syntax.infix("+", stx, Syntax.i64(1))
 
@@ -625,7 +625,7 @@ The initial 7G implementation explored functional deconstructors (`Syntax.is_ap`
 
 The revised design exposes `Syntax.t` (and its per-syntax-class variants) as a **nominal, matchable ADT** visible to macros. A macro author writes:
 
-```fun
+```quill
 macro flatten(stx) ->
   match stx do
   | Syntax.Ap(Syntax.Ap(f, a1), a2) -> Syntax.Ap(f, Syntax.Prod([a1, a2]))
@@ -693,7 +693,7 @@ This section records the concrete design decisions and implementation sequence f
 
 #### Prelude type definitions (target)
 
-```fun
+```quill
 pub module Syntax do
   pub type Explicitness = Explicit | Implicit
 

@@ -1,6 +1,6 @@
 ---
 title: Template and operator heads resolve by scope set
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -34,7 +34,7 @@ other binder of its name** (see below).
    mechanism, and no macro can move where a body ends.
 3. **Mixing is an error.** A name with a syntactic role (macro, template,
    operator) cannot also be bound as anything else where both are visible:
-   ```fun
+   ```quill
    syntax answer { | answer => 42 }
    do { answer = 7; 1 }       # error at the binder, even if unused
    fn(answer) { 1 }           # error
@@ -55,7 +55,7 @@ other binder of its name** (see below).
    application's intro scope, so user code cannot see it. To generate callable
    syntax the name comes from the use site — a captured id, which may name a
    generated declaration and head its rules:
-   ```fun
+   ```quill
    syntax make_inc { | make_inc $(n: ident) => multi { syntax $n { | $n $x => $x + 1 } } };
    make_inc inc;
    pub result = inc 5          # 6

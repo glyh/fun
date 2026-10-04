@@ -1,6 +1,6 @@
 ---
 title: The elaborator's expander handle is named as a context but used as a capability
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

@@ -13,7 +13,7 @@ the language's stack", "Interpreter first, then compile it in the interpreter's 
 this axis and are cross-referenced rather than repeated); effect rows, handlers and async colouring
 are `effects-and-handlers.md`.
 
-One distinction runs through the whole doc: `fun` is an evaluator with no backend, so the ideas
+One distinction runs through the whole doc: `quill` is an evaluator with no backend, so the ideas
 that matter *now* are the ones already decided inside it — one table of primitives, checked
 integer edge cases, closures as ordinary values, `Kont` frames instead of native recursion, and
 what `std/` puts behind `String` and `Tuple`. Value representation, layout, calling conventions,
@@ -82,8 +82,8 @@ Hertz & Berger's 2005 measurement (below). · Garbage Collection · Crafting Int
 https://www.reddit.com/r/ProgrammingLanguages/comments/e41idc/garbage_collection_crafting_interpreters/
 (2019-11) — link post carrying the original quote.
 
-**Bearing on `fun`.** Today the question is the CLR's, not `fun`'s: the evaluator allocates `Kont`
-frames, `Value`s and `Atom`s on the host heap and no part of `fun` can hide a managed reference
+**Bearing on `quill`.** Today the question is the CLR's, not `quill`'s: the evaluator allocates `Kont`
+frames, `Value`s and `Atom`s on the host heap and no part of `quill` can hide a managed reference
 from the .NET collector. What must not be left late *inside the language* already isn't: mutation
 is three heap effects `Alloc(h)`/`Read(h)`/`Write(h)` with `Discharge`, and there is deliberately
 no merged `Mut`. Which collector a future backend uses is undecided and appears nowhere in the
@@ -147,8 +147,8 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/110gitm/are_people_too_ob
 (2023-02) — the named tracing collectors (Sun/Oracle's Java collectors, Microsoft's CLR
 collector, Google's V8 collector) are in its retrieved tree.
 
-**Bearing on `fun`.** Neither strategy applies today: values live on the host heap and the
-language has no reclamation construct at all. The one ownership-shaped rule `fun` does have is
+**Bearing on `quill`.** Neither strategy applies today: values live on the host heap and the
+language has no reclamation construct at all. The one ownership-shaped rule `quill` does have is
 type-level and already decided — `Discharge` lets a definition's local heaps vanish at
 generalisation, so an internal `Reference` leaves a pure signature, which is runST's condition met
 by inference instead of a wrapper. Whether a backend counts or traces is undecided; the
@@ -200,7 +200,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1h80vre/hybrid_memory_man
 (2024-08) — LXR, body only. · The borrow-over-RC remark is in the retrieved tree of Is reference
 counting a trap? (2026-06).
 
-**Bearing on `fun`.** Genuinely new, and further off than it looks: `fun` has exactly one kind of
+**Bearing on `quill`.** Genuinely new, and further off than it looks: `quill` has exactly one kind of
 mutable cell (`Reference`, branded by its `Heap`) and one reclamation story — the host's. A
 language-level escape hatch from collection would have to coexist with `Alloc(h)`/`Read(h)`/
 `Write(h)` and with `Discharge`, which currently assume every heap is collected or not-managed-at
@@ -255,8 +255,8 @@ Designing Mismo's Memory Management System: A Story of Bindings, Borrowing, and 
 https://www.reddit.com/r/ProgrammingLanguages/comments/1lk0wai/designing_mismos_memory_management_system_a_story/
 (2025-06) — body read; `var`/`let`/`ref` bindings and the design's growth into five parts.
 
-**Bearing on `fun`.** `fun` has no linearity and no borrow checker, and the wayfinder does not
-propose one — the type-level side is explicitly parked in `types-and-semantics.md`. What `fun`
+**Bearing on `quill`.** `quill` has no linearity and no borrow checker, and the wayfinder does not
+propose one — the type-level side is explicitly parked in `types-and-semantics.md`. What `quill`
 already has is the ownership rule it actually needs for purity: a `Reference` that cannot escape
 its definition loses its heap through `Discharge` at generalisation, so local mutation never
 appears in a signature. Everything else here (inserted frees, recursive destructors) is a backend
@@ -311,10 +311,10 @@ can virtual memory mapping features be made to a language or run time?, score 26
 https://www.reddit.com/r/ProgrammingLanguages/comments/1naux68/how_useful_can_virtual_memory_mapping_features_be/
 (2025-09).
 
-**Bearing on `fun`.** Beware the word: `fun`'s `Heap` is a type-level *brand* on references —
+**Bearing on `quill`.** Beware the word: `quill`'s `Heap` is a type-level *brand* on references —
 what `Read(h)` acts on and what `Discharge` may drop — not a bump area, and the glossary bans
 `region` outright (region inference's word). Arena-per-extent is genuinely new to the project and
-backend-only. The idea that *does* rhyme with `fun` is Language 84's: extents inferred from
+backend-only. The idea that *does* rhyme with `quill` is Language 84's: extents inferred from
 structure rather than annotated, which is exactly how local-heap discharge already works.
 
 ### Deterministic destruction: run the destructor where you can see it
@@ -361,7 +361,7 @@ reference counting a trap? (2026-06); the stack-overflow destructor remark and O
 destructors" are in the retrieved trees of the Rust thread (2023-01) and the closures thread
 (2024-11).
 
-**Bearing on `fun`.** `fun` has no destructors, finalisers or `close`: the only time-sensitive
+**Bearing on `quill`.** `quill` has no destructors, finalisers or `close`: the only time-sensitive
 runtime behaviour it owns is effect handling — deep, one-shot continuations, with
 `HandledEffectEscapes` refusing to let a closure whose row names a handled effect leave the
 handler's region. Resources are not modelled yet; if IO ever arrives, "who releases it and when"
@@ -404,7 +404,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1124opt/tricking_the_garb
 (2023-02) — body read; the false-retention discovery. · The Mono retrofit is in the retrieved
 tree of the GC-later thread (2024-07).
 
-**Bearing on `fun`.** Backend-only and undecided. Note for the day it matters: an evaluator whose
+**Bearing on `quill`.** Backend-only and undecided. Note for the day it matters: an evaluator whose
 values are .NET records is traced precisely by construction, and the parts a future collector
 would have to see are exactly the parts `Kont` frames and `Value`s already are — managed objects.
 Nothing in `docs/wayfinder` discusses collectors at all.
@@ -451,7 +451,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1cq9t83/making_an_allocat
 TLB remarks are in the retrieved trees of Is reference counting a trap? (2026-06) and How useful
 can virtual memory mapping features be made to a language or run time? (2025-09).
 
-**Bearing on `fun`.** Contradicted by the evaluator's shape, so worth saying plainly: NbE builds
+**Bearing on `quill`.** Contradicted by the evaluator's shape, so worth saying plainly: NbE builds
 closures, module values and `Kont` frames on a heap that grows with the program, and compilation
 units are *reused* precisely because they are base-anchored rather than statically placed. The
 compile-time half does look heapless — the prelude elaborates once and is carried as terms — but
@@ -505,7 +505,7 @@ trend towards more UB (?), score 75, 77 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/13usqwq/recent_trend_towards_more_ub/
 (2023-05) — 26 comments retrieved; the Rust-safe-subset proof remark.
 
-**Bearing on `fun`.** `fun`'s safety is all up front: the checker refuses, evaluation raises a
+**Bearing on `quill`.** `quill`'s safety is all up front: the checker refuses, evaluation raises a
 `FunException`, and an unported path raises `NotImplementedException("not ported yet: …")` so it
 can never masquerade as a passing `error` case. There are no run-time casts to check because
 there is no pointer type — `Reference` is opaque and heap-branded. This idea is not applicable
@@ -560,7 +560,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/15o1wxa/garbage_collectio
 (2023-08) — both link posts, positions only, comments not fetched. · The Hertz & Berger numbers
 appear in the retrieved tree of the GC-later thread (2024-07).
 
-**Bearing on `fun`.** Not to be confused with `fun`'s *evaluation budget*: that is how many
+**Bearing on `quill`.** Not to be confused with `quill`'s *evaluation budget*: that is how many
 semantic steps the checker may spend while type checking — one budget shared by the checker and
 macro applications, raisable per evaluation, spent by nothing at run time — and depth fuel was
 rejected as the mechanism. Budget measures compute, not memory; a collector's headroom problem
@@ -610,12 +610,12 @@ runtime with a dispatch interpreter and two JIT tiers, score 47, 9 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1mducvv/tear_it_apart_a_fromscratch_javascript_runtime/
 (2025-07) — body read; the modern end state.
 
-**Bearing on `fun`.** `fun` is not a tree-walker over surface forms; it is a term evaluator over
+**Bearing on `quill`.** `quill` is not a tree-walker over surface forms; it is a term evaluator over
 `Core`, driven by an explicit frame stack — `switch (term)` for the term cases and
 `stack.Pop()` for `Kont` frames — and it serves both checking and running (see
 `compiler-architecture.md`, "One evaluator serves both checking and running"). A bytecode layer
 would be a *second* engine with a differential-oracle problem ("Two engines give you a
-differential oracle — or a second liability"), and no backend exists to hold it: `src/Fun.Cli`
+differential oracle — or a second liability"), and no backend exists to hold it: `src/Quill.Cli`
 still prints "the .NET port has no entry point yet" and exits 1. This idea matters only at a
 backend, which is undecided and unscheduled.
 
@@ -665,7 +665,7 @@ complaint. · Stack VM in Rust: Instructions as enum?, score 33, 57 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1f4ek8e/stack_vm_in_rust_instructions_as_enum/
 (2024-08) — body read; uniform instruction width.
 
-**Bearing on `fun`.** Has it differently: `fun`'s dispatch is a C# `switch` over `Core` term kinds
+**Bearing on `quill`.** Has it differently: `quill`'s dispatch is a C# `switch` over `Core` term kinds
 inside the frame-stack loop, and the operand stack is the `Kont` machine that already exists for
 evaluation, not a bytecode stack. There is no instruction stream to thread, no handler ordering to
 profile and no superinstructions to fuse — every one of these ideas presupposes a backend. What is
@@ -697,7 +697,7 @@ wedded to the solution".
 fetched); all three variants are described as things posters have built.
 
 **Tried by.** The posters of both threads (a map from names to host functions in a tree-walker,
-then an array-of-functions or inlined bytecode in a VM); `fun` ships the one-table design.
+then an array-of-functions or inlined bytecode in a VM); `quill` ships the one-table design.
 
 **Source.** How do you implement primitives?, score 50, 41 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/tcf95q/how_do_you_implement_primitives/
@@ -706,11 +706,11 @@ do builtins, score 20, 23 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/18wfw1c/the_heart_of_a_vm_and_how_to_do_builtins/
 (2024-01) — body read; the inlining route and its opcode cost.
 
-**Bearing on `fun`.** Already has it, by name: `Primitives.Declarations` is the one table of
+**Bearing on `quill`.** Already has it, by name: `Primitives.Declarations` is the one table of
 primitives — name, type, reducer — and the elaborator's primitive types and the evaluator's
 reductions both derive from it, so "nothing else lists primitives"
 (`unify-primitive-declaration.md`). The base context binds each named primitive as a defined
-entry. The vocabulary is settled too: `fun` calls them *primitives* and the glossary bans
+entry. The vocabulary is settled too: `quill` calls them *primitives* and the glossary bans
 `builtin`, `intrinsic` and `native`. A primitive's failure behaviour rides on the declaration
 itself, which is what division by zero needed.
 
@@ -753,10 +753,10 @@ both LLVM and GCC?, score 59, 36 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/11kxwql/challenges_writing_a_compiler_frontend_targeting/
 (2023-03) — title as position; body not read.
 
-**Bearing on `fun`.** The choice itself is `compiler-architecture.md`'s entry "Backend: C, LLVM,
+**Bearing on `quill`.** The choice itself is `compiler-architecture.md`'s entry "Backend: C, LLVM,
 or your own — and what a second backend costs" — not repeated here; what this axis adds is the
-runtime consequence: emitting C hands `fun`'s calling conventions, its ABI and its undefined
-behaviour to a C compiler, and either adopts Boehm or makes `fun` own reclamation. Undecided and
+runtime consequence: emitting C hands `quill`'s calling conventions, its ABI and its undefined
+behaviour to a C compiler, and either adopts Boehm or makes `quill` own reclamation. Undecided and
 unscheduled; the fog item that must be settled first is the library-vs-compiler-machinery boundary
 (UFCS, FFI), and interop's design half is `modules-and-abstraction.md`.
 
@@ -801,8 +801,8 @@ https://www.reddit.com/r/Compilers/comments/1b0p627/what_would_a_programming_lan
 memory management?, score 154, 82 comments (2023-02) — the JIT-vs-AOT claim and its rebuttal in
 the retrieved tree (permalink above, under the ownership entry).
 
-**Bearing on `fun`.** Genuinely new to the project and, today, meaningless: `fun` runs programs
-by evaluating them, `src/Fun.Cli` has no entry point, and nothing in the wayfinder discusses code
+**Bearing on `quill`.** Genuinely new to the project and, today, meaningless: `quill` runs programs
+by evaluating them, `src/Quill.Cli` has no entry point, and nothing in the wayfinder discusses code
 generation at all. One clarification worth keeping for the day a backend arrives: the checker's
 *evaluation budget* — semantic steps spent while type checking, shared with macro applications —
 is a compile-time device and has nothing to do with compiling code at run time.
@@ -844,8 +844,8 @@ write?, score 53, 30 comments,
 https://www.reddit.com/r/Compilers/comments/1u9sxau/how_do_jit_compilers_actually_jump_to_the_code/
 (2026-06) — cited as the mechanics thread; body not read here.
 
-**Bearing on `fun`.** Not applicable, and worth saying so: no instruction stream, no profiles, no
-tiers. The nearest thing `fun` has to "compilation at run time" is macro expansion during
+**Bearing on `quill`.** Not applicable, and worth saying so: no instruction stream, no profiles, no
+tiers. The nearest thing `quill` has to "compilation at run time" is macro expansion during
 elaboration, which is under the evaluation budget and produces syntax, not code. If a backend
 ever appears, this is where its second and third years go.
 
@@ -900,9 +900,9 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/l38m3u/compressing_fat_po
 virtual-memory thread (2025-09); the tagged-integer and Smalltalk remarks are in the body of the
 CPython thread (2025-11).
 
-**Bearing on `fun`.** Not available, and for a structural reason worth naming: NaN boxing
-presupposes a floating-point type, and `fun` has none — `AtomTy` is `I64, Unit, Char, String,
-Scopes, Absurd`, with no `F64` anywhere in `Primitives.Declarations`. What `fun` has instead is
+**Bearing on `quill`.** Not available, and for a structural reason worth naming: NaN boxing
+presupposes a floating-point type, and `quill` has none — `AtomTy` is `I64, Unit, Char, String,
+Scopes, Absurd`, with no `F64` anywhere in `Primitives.Declarations`. What `quill` has instead is
 one word per literal on a managed heap: `Atom.I64(long)` is a record, boxed like every other
 value, and the CLR decides tagging if any. Representation is a backend decision; the language-level
 decision it must not contradict — one number type, checked — is already made.
@@ -948,7 +948,7 @@ https://www.reddit.com/r/Compilers/comments/1q4y9vj/writing_a_bytecode_vm_in_c_a
 https://www.reddit.com/r/ProgrammingLanguages/comments/ac2k25/limitations_on_memory_representations/
 (2019-01) — body read; the constraint list.
 
-**Bearing on `fun`.** Has it differently: `fun` is uniformly boxed *by its host* — every `Value`
+**Bearing on `quill`.** Has it differently: `quill` is uniformly boxed *by its host* — every `Value`
 and `Atom` is a .NET record, every literal a heap object — and there is no static-type-driven
 unboxing anywhere in the evaluator. What the language does decide today is the *type-level*
 product: `Tuple(n, T1, …, Tn)` is the flat product with `tuple_arity(n)` computing its arity, and
@@ -997,10 +997,10 @@ System V ABI support to my compiler, score 24, 0 comments,
 https://www.reddit.com/r/Compilers/comments/1hg626g/after_6_months_of_doing_literally_nothing_i/
 (2024-12) — title as position.
 
-**Bearing on `fun`.** No ABI exists, because no code generation exists. Two boundary notes for
+**Bearing on `quill`.** No ABI exists, because no code generation exists. Two boundary notes for
 when one does: interop's *design* side (what an FFI looks like to a programmer) is
 `modules-and-abstraction.md` and the recorded fog item on the library-vs-compiler-machinery
-boundary (UFCS, FFI); and `fun`'s own calling convention today is C#'s — every evaluator helper
+boundary (UFCS, FFI); and `quill`'s own calling convention today is C#'s — every evaluator helper
 call, every `Kont` frame push, is a host stack frame with a host convention.
 
 ### Closures: who owns the captured environment
@@ -1035,7 +1035,7 @@ topic.
 are everywhere (JS, Java, Go); Odin's refusal is a shipped position, not a theorem. The claim
 *closures require AMM* is answered by counterexample in its own thread.
 
-**Tried by.** C++, Rust, ATS (three function kinds), Odin (refuses), JavaScript, Java, `fun`
+**Tried by.** C++, Rust, ATS (three function kinds), Odin (refuses), JavaScript, Java, `quill`
 (closures are ordinary values).
 
 **Source.** can capturing closures only exist in languages with automatic memory management?,
@@ -1051,9 +1051,9 @@ elimination, score 27, 11 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1hxcsms/looking_for_a_paper_about_wholeprogram_closure/
 (2025-01) — title as position.
 
-**Bearing on `fun`.** Already has it: a closure is an ordinary value (`Value.VLam` over a
+**Bearing on `quill`.** Already has it: a closure is an ordinary value (`Value.VLam` over a
 `Closure` of environment and body), there is no non-capturing variant, and the runtime question
-"is the capture still alive" does not arise on a managed heap. The one capture question `fun`
+"is the capture still alive" does not arise on a managed heap. The one capture question `quill`
 *did* have was identity, and it was ruled and fixed —
 `closure-capture-identity-two-answers.md`. Modules are the same mechanism by design: a module
 value "captures the context it was written in, like a closure". Who frees a capture is the CLR's
@@ -1118,7 +1118,7 @@ Learned To Love Tail Calls in C, score 47, 6 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/my2720/parsing_protobuf_at_2gbs_how_i_learned_to_love/
 (2021-04) — link post with no body, outside the slice; read from `corpus.jsonl`.
 
-**Bearing on `fun`.** `fun` promises neither TCO nor a constant-space tail call — no document in
+**Bearing on `quill`.** `quill` promises neither TCO nor a constant-space tail call — no document in
 `docs/wayfinder` mentions tail calls — so the honest statement is: undecided, and unasked. What it
 does promise is the architectural half: a term needing a sub-evaluation gets a `Kont` frame, never
 a native one, so deep non-tail recursion costs one heap frame per object-level call. That was
@@ -1176,7 +1176,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1smg7an/i_wrote_an_mn_sch
 (2026-04) — read from `corpus.jsonl`, outside the slice; the ring-buffer/parking design and its
 benchmarks.
 
-**Bearing on `fun`.** Genuinely new and unasked: `fun` has no concurrency primitive, no scheduler
+**Bearing on `quill`.** Genuinely new and unasked: `quill` has no concurrency primitive, no scheduler
 and no threads, and neither `CONTEXT.md` nor the wayfinder mentions any. The closest existing
 machinery is *conceptual*: effect rows say what a function may perform and handlers are deep and
 one-shot, which is the vocabulary a task runtime would sit on — but a scheduler is not an effect,
@@ -1223,10 +1223,10 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1rbnwiw/aether_a_compiled
 (2026-02) — read from `corpus.jsonl`, outside the slice; self-promotion, cited as an attempt (a
 sibling posting at score 35 exists on r/Compilers).
 
-**Bearing on `fun`.** Nothing in `fun` is shared-nothing: references on heaps are mutable, and
-`fun`'s answer to races is *not* an actor model but the effect system — `Read(h)`/`Write(h)` are
+**Bearing on `quill`.** Nothing in `quill` is shared-nothing: references on heaps are mutable, and
+`quill`'s answer to races is *not* an actor model but the effect system — `Read(h)`/`Write(h)` are
 rows a function must declare, and a handler's escape rules stop closures smuggling handled
-effects out. A memory model question does not yet exist for `fun` because there is no
+effects out. A memory model question does not yet exist for `quill` because there is no
 inter-thread anything; if actors or threads ever arrive, "what does the language promise about
 reads and writes across tasks" becomes a real and currently unanswered design question — and,
 notably, no thread in this corpus answers it for anyone (see Gaps).
@@ -1272,8 +1272,8 @@ benchmarks. · Functional GPU programming: what are alternatives or generalizati
 https://www.reddit.com/r/ProgrammingLanguages/comments/12bll1a/functional_gpu_programming_what_are_alternatives/
 (2023-04) — title as position, outside the slice; read from `corpus.jsonl`.
 
-**Bearing on `fun`.** Genuinely new; nothing in `CONTEXT.md` or the wayfinder mentions GPUs,
-kernels or arrays of them. The one structural rhyme: the shader-as-closure move is exactly `fun`'s
+**Bearing on `quill`.** Genuinely new; nothing in `CONTEXT.md` or the wayfinder mentions GPUs,
+kernels or arrays of them. The one structural rhyme: the shader-as-closure move is exactly `quill`'s
 "modules are first-class values" argument applied to kernels — a callable value that captures what
 it needs — so the *shape* would not be foreign to the language. The execution model would be.
 
@@ -1313,7 +1313,7 @@ define, not a survey; the checked-arithmetic position is what several production
 pole.
 
 **Tried by.** Zig (debug traps), Odin (avoid UB), C3 (balance checks), Rust (UB only in `unsafe`),
-C/C++ (undefined by design), `fun` (checked `I64`).
+C/C++ (undefined by design), `quill` (checked `I64`).
 
 **Source.** Recent trend towards more UB (?), score 75, 77 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/13usqwq/recent_trend_towards_more_ub/
@@ -1322,7 +1322,7 @@ Lattner reference. · Bytecode VMs, should i even bother to implement 32 bit mat
 comments, https://www.reddit.com/r/Compilers/comments/na0stx/bytecode_vms_should_i_even_bother_to_implement_32/
 (2021-05) — body read; the width question.
 
-**Bearing on `fun`.** Already has it, and it is one of the few runtime decisions `fun` has made
+**Bearing on `quill`.** Already has it, and it is one of the few runtime decisions `quill` has made
 for real: `I64` `+ - * /` are checked, overflow (including `min_int / -1`) and division by zero
 fail with a `FunException` naming the operation — "integer overflow in <op>". That behaviour is
 part of a primitive's declaration (`Primitives.Declarations`), not a scattered branch. The corpus's
@@ -1369,14 +1369,14 @@ leak-versus-special-cases dilemma. · What string model did you use and why?, sc
 https://www.reddit.com/r/ProgrammingLanguages/comments/1rhg3x4/what_string_model_did_you_use_and_why/
 (2026-02) — read from `corpus.jsonl`, outside the slice; the four models with pros and cons.
 
-**Bearing on `fun`.** Has it, minimally: `String` is one of `fun`'s six atoms (`AtomTy` =
+**Bearing on `quill`.** Has it, minimally: `String` is one of `quill`'s six atoms (`AtomTy` =
 `I64, Unit, Char, String, Scopes, Absurd`), host-backed, and the primitives table gives it exactly
 `eq_string`/`neq_string` plus `panic`'s message type — no concatenation, no slicing, no length.
 The library decision is recorded and deliberate: **`Std.Strings` does not exist**; `Strings` is
 *named* in the std-library surface ticket and explicitly "not declared" in the first cut
 (`design-std-library-surface.md`). So the representation question (bytes vs UTF-16, mutable vs
 immutable) is still open *and* unasked — the corpus says it is the choice that drags the memory
-model along with it, which for `fun` means it belongs with the std surface decision, not with a
+model along with it, which for `quill` means it belongs with the std surface decision, not with a
 backend.
 
 ### Arrays and tuples: one flat product, or two types
@@ -1420,7 +1420,7 @@ with a C API, score 11, 24 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/13zcm5i/implementing_arrays_and_hash_tables_and_in_a/
 (2023-06) — title as position, outside the slice; read from `corpus.jsonl`.
 
-**Bearing on `fun`.** Has it half-decided, and in the direction opposite to the proposal: `fun`
+**Bearing on `quill`.** Has it half-decided, and in the direction opposite to the proposal: `quill`
 has tuples and no arrays. `Tuple(n, T1, …, Tn)` is a built-in type former whose type is
 `(n : I64) -> tuple_arity(n)`, arity computed from `n` (a negative `n` is an evaluation error), and
 it reduces to the flat product; projections are ordinary. There is no array type in `std/` and no
@@ -1468,7 +1468,7 @@ Optimised Memory Layouts, score 13, 3 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1l37lcl/feedback_request_tasks_for_compiler_optimised/
 (2025-06) — title as position.
 
-**Bearing on `fun`.** Layout does not exist yet — structs are fields and methods in the
+**Bearing on `quill`.** Layout does not exist yet — structs are fields and methods in the
 elaborator and a `Value` at run time, with no backend to lay them out in. Two representation
 choices *have* been made, both for correctness rather than speed: kernel records store their
 sequences as `EquatableArray<T>`, because `ImmutableArray<T>` compares by reference and made
@@ -1566,10 +1566,10 @@ not in the wayfinder.
   speed, not the numerics; the critics concede only the cleverness, not the correctness. This one
   would need an implementation to settle, and none exists in the corpus.
 
-**What this doc does not know about `fun`.** Two claims in it rest on `fun`'s own records rather
+**What this doc does not know about `quill`.** Two claims in it rest on `quill`'s own records rather
 than on the corpus — that `Kont` frames make deep recursion linear, and that
 `Primitives.Declarations` is the single source for primitive types and reductions — and both are
 measured or ticketed (`deep-non-tail-recursion-is-superlinear.md`, `unify-primitive-declaration.md`).
 Everything marked "backend-only" is backend-only *given that no backend exists*, which
-`STATUS.md` and the `Fun.Cli` stub confirm today; if a backend ticket opens, the entries marked
+`STATUS.md` and the `Quill.Cli` stub confirm today; if a backend ticket opens, the entries marked
 that way turn into due decisions rather than trivia.

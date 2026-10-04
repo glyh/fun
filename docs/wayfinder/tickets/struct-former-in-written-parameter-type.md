@@ -1,6 +1,6 @@
 ---
 title: A struct former in a written parameter type is refused
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -20,7 +20,7 @@ user-visible bug on its own and does not belong inside that ticket.
 A parameter whose written type applies a struct former is refused, **with the type
 argument supplied**:
 
-```fun
+```quill
 { Box = fn[A : Type] { struct { v : A; pub method get(r : Ref(I64)) : I64 { 3 } } };
   g = fn(o : Box[I64]) : I64 { o.v };
   b = Box[I64]{ v = 1 }; g(b) }
@@ -52,11 +52,11 @@ constructors.
 
 ## Where to look
 
-- `src/Fun.Compiler/Elaborator.cs` — the written-parameter-type elaboration
+- `src/Quill.Compiler/Elaborator.cs` — the written-parameter-type elaboration
   (`InferLam` and the `Lam`-against-`Pi` check), which is where `Box[I64]` is turned into a
   domain
-- `src/Fun.Compiler/Unify.cs` — the `VStruct`/`VU` mismatch that is reported
-- `src/Fun.Compiler/Nbe.RecTypes.cs`, `Elaborator.RecTypes.cs` — a struct former is a
+- `src/Quill.Compiler/Unify.cs` — the `VStruct`/`VU` mismatch that is reported
+- `src/Quill.Compiler/Nbe.RecTypes.cs`, `Elaborator.RecTypes.cs` — a struct former is a
   recursive binding, so the form yields a closure until applied
 - [parameter type metas capture earlier parameters](parameter-type-metas-capture-earlier-parameters.md)
   — the investigation it came out of, and its `dep4`/`dep10` probes, which are the same

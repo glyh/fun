@@ -1,6 +1,6 @@
 ---
 title: A .NET backend
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: open
@@ -13,13 +13,13 @@ blocked_by:
 ## Question
 
 Add a compilation backend that targets .NET — lowering `Core.term` to something runnable on the
-runtime the compiler itself already sits on (the implementation is C# on .NET 10) — so a `fun`
+runtime the compiler itself already sits on (the implementation is C# on .NET 10) — so a `quill`
 program can be built and run as a .NET artifact, not only interpreted through NbE.
 
 ## Where it stands
 
-- **There is no backend.** The pipeline ends at NbE → value, and `src/Fun.Cli` is a stub that
-  prints `fun: the .NET port has no entry point yet` and exits 1. The only way to run a program
+- **There is no backend.** The pipeline ends at NbE → value, and `src/Quill.Cli` is a stub that
+  prints `quill: the .NET port has no entry point yet` and exits 1. The only way to run a program
   is the conformance runner's single-file mode.
 - The only analysis is in `docs/ideas/compiler-architecture.md` §"Backend: C, LLVM, or your own —
   and what a second backend costs", whose verdict is **undecided and unscheduled**: *"there is no
@@ -66,5 +66,5 @@ program can be built and run as a .NET artifact, not only interpreted through Nb
 
 ## Sharpens when
 
-Someone wants to run a `fun` program outside the interpreter — a binary, a library, or an FFI
+Someone wants to run a `quill` program outside the interpreter — a binary, a library, or an FFI
 consumer — and the interpreter is not enough.

@@ -107,7 +107,7 @@ E11 work.
 - **What landed.** The two `NotImplementedException` refusals in
   `Elaborator.Patterns.cs` became the `let`-generalization step: `CollectSynonymMetas`
   gathers the unsolved metas of the scrutinee and parameter types; `VPatternSynonym`
-  (`dotnet/src/Fun.Kernel/Core.Patterns.cs`) now carries `TypeParams`, `Generalized` and
+  (`dotnet/src/Quill.Kernel/Core.Patterns.cs`) now carries `TypeParams`, `Generalized` and
   the definition's `Env`/`Width`; `InstantiateSynonym` quotes the stored template back
   under the definition environment and substitutes each generalized meta with a fresh
   one, so one declaration is elaborated once and instantiated per use, with captured

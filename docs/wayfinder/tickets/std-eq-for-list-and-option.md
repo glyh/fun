@@ -1,11 +1,11 @@
 ---
 title: Eq for List and Option — the library's two impls
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
 closed_date: 2026-09-28
-resolution: Closed 2026-09-28 (`8da5054` impls, `c651996` exports, `9ecfd08` cases). Both impls ship: `pub impl list_eq : Eq(List(a))` in `std/list.fun` and `pub impl option_eq : Eq(Option(a))` in `std/option.fun`, with `export Lists.{list_eq};` and `export Options.{option_eq};` — and nothing else from those units. Suite `908` → **`916` cases, 0 failed**; xUnit `206`; no expected value changed. **The export mechanism's first real use behaved**: a no-import program resolves `Eq(List(I64))`/`Eq(Option(I64))` from base scope while bare `map`/`get_or`/`length` stay unbound and `Std.Lists.length` works — the integrator re-measured the headline (`Cons(1, Cons(2, Nil)) == Cons(1, Cons(2, Nil))` → `True`). Two surface notes and two compiler limitations were recorded on this ticket instead of hidden: there is no list-literal syntax (cases spell `Cons`/`Nil`), `Nil == Nil`/`None == None` are ambiguous ("element type never known") so the empty cases pin `I64`, an impl body cannot demand its own trait at the head's type (hence the `list_eq_aux` wrapper with a nested `rec go`), and a unit-level `rec` with a type parameter fails ([filed](unit-rec-helper-with-written-implicit-binders.md)). This was the library surface's last unshipped piece.
+resolution: Closed 2026-09-28 (`8da5054` impls, `c651996` exports, `9ecfd08` cases). Both impls ship: `pub impl list_eq : Eq(List(a))` in `std/list.qll` and `pub impl option_eq : Eq(Option(a))` in `std/option.qll`, with `export Lists.{list_eq};` and `export Options.{option_eq};` — and nothing else from those units. Suite `908` → **`916` cases, 0 failed**; xUnit `206`; no expected value changed. **The export mechanism's first real use behaved**: a no-import program resolves `Eq(List(I64))`/`Eq(Option(I64))` from base scope while bare `map`/`get_or`/`length` stay unbound and `Std.Lists.length` works — the integrator re-measured the headline (`Cons(1, Cons(2, Nil)) == Cons(1, Cons(2, Nil))` → `True`). Two surface notes and two compiler limitations were recorded on this ticket instead of hidden: there is no list-literal syntax (cases spell `Cons`/`Nil`), `Nil == Nil`/`None == None` are ambiguous ("element type never known") so the empty cases pin `I64`, an impl body cannot demand its own trait at the head's type (hence the `list_eq_aux` wrapper with a nested `rec go`), and a unit-level `rec` with a type parameter fails ([filed](unit-rec-helper-with-written-implicit-binders.md)). This was the library surface's last unshipped piece.
 assignee:
 blocked_by:
 # unblocked 2026-09-27: generic-impl-head-var-has-no-bound.md closed (cb52e96) — a
@@ -42,7 +42,7 @@ blocked the library, and both are recorded because the workarounds hide them.
    generic-impl fix (`cb52e96`) covers a demand for the head **variable's** evidence; a demand for
    the impl's **own** trait at the head's type is a different case. What shipped instead is a
    non-recursive wrapper, `list_eq_aux : [B : Eq] -> List(B) -> List(B) -> Bool`, holding a nested
-   `rec go`, called from the impl body (`std/list.fun:201`) — **required, not stylistic**.
+   `rec go`, called from the impl body (`std/list.qll:201`) — **required, not stylistic**.
 2. **A recursive helper with written implicit binders fails at a unit's top level**
    (`cannot unify VPi with VPi`) while the same declaration works at program and block level —
    [its own ticket](unit-rec-helper-with-written-implicit-binders.md).
@@ -50,15 +50,15 @@ blocked the library, and both are recorded because the workarounds hide them.
 **Follow-up 2026-09-28, from that ticket's fix (`88f862f`): the wrapper is no longer needed.** A
 module member `rec` with written implicit binders now binds its own name at its written type, so
 the direct helper under `impl Eq(List(I64))` evaluates correctly — measured by the fork that fixed
-it. That also makes the comment in `std/list.fun` ("a unit-level `rec` cannot carry a type
+it. That also makes the comment in `std/list.qll` ("a unit-level `rec` cannot carry a type
 parameter") **stale**. Inlining the wrapper is a library simplification whose cases already exist;
 it is a small fork, not a decision.
 
 ## What to do when the last blocker closes
 
-1. `std/list.fun`: `pub impl list_eq : Eq(List(A)) = module { fn eq(xs, ys) { … } };`
-2. `std/option.fun`: `pub impl option_eq : Eq(Option(A)) = module { fn eq(xs, ys) { … } };`
-3. `std/stage2.fun`: `export Lists.{list_eq};` and `export Options.{option_eq};` —
+1. `std/list.qll`: `pub impl list_eq : Eq(List(A)) = module { fn eq(xs, ys) { … } };`
+2. `std/option.qll`: `pub impl option_eq : Eq(Option(A)) = module { fn eq(xs, ys) { … } };`
+3. `std/stage2.qll`: `export Lists.{list_eq};` and `export Options.{option_eq};` —
    **and nothing else from those units**, which is the whole point of
    [the layout](../tickets/design-std-library-surface.md#12-unit-layout--one-unit-per-module-std-re-exports-only-the-impls).
 

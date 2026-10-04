@@ -1,6 +1,6 @@
 ---
 title: A local open expression, M.(expr)
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed
@@ -15,7 +15,7 @@ Raised by the user (2026-09-17). Undecided: adopt it, and if so, what it means.
 ## Question
 
 OCaml lets an expression open a module for itself only: `M.(e)` is `let open M in e`.
-Should `fun` have the same form? Today the only way to open for one expression is a
+Should `quill` have the same form? Today the only way to open for one expression is a
 block, `{ open M; e }`, which is a statement plus a body.
 
 ```

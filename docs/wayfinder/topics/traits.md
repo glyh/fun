@@ -6,7 +6,7 @@ Add nominal traits for ad-hoc polymorphism. Traits provide named operation sets 
 
 Target surface:
 
-```fun
+```quill
 trait Eq(a) = sig
   eq : a -> a -> Bool
 end
@@ -20,7 +20,7 @@ same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) -> Eq.eq(x, y)
 
 Multi-trait bounds use Rust-like `+` syntax:
 
-```fun
+```quill
 encode_key : [A : Eq + Jsonable] -> A -> String = ...
 ```
 
@@ -98,7 +98,7 @@ Add expression forms:
 
 Parser targets:
 
-```fun
+```quill
 do
   trait Eq(a) = sig eq : a -> a -> Bool end
   impl Eq(I64) = module fn eq(x, y) -> eq_i64(x, y) end
@@ -129,13 +129,13 @@ Represent trait dictionaries as internal struct-like runtime values, but mark bi
 
 For a bound:
 
-```fun
+```quill
 [A : Eq + Jsonable] -> R
 ```
 
 elaborate conceptually to:
 
-```fun
+```quill
 [A : Type] -> [hidden eq : Eq(A)] -> [hidden jsonable : Jsonable(A)] -> R
 ```
 
@@ -145,7 +145,7 @@ The exact core encoding can reuse implicit `Pi` initially if that is simpler, pl
 
 Elaborate:
 
-```fun
+```quill
 trait Eq(a) = sig
   eq : a -> a -> Bool
 end
@@ -164,7 +164,7 @@ into a nominal trait definition with:
 
 Elaborate:
 
-```fun
+```quill
 impl Eq(I64) = module
   fn eq(x, y) -> eq_i64(x, y)
 end
@@ -184,7 +184,7 @@ Implementations should not introduce ordinary user-accessible values unless expl
 
 For an implicit binder with trait bounds:
 
-```fun
+```quill
 [A : Eq + Jsonable] -> R
 ```
 
@@ -200,7 +200,7 @@ For function application, resolve missing hidden dictionaries from lexical/impor
 
 Resolve qualified trait calls:
 
-```fun
+```quill
 Eq.eq(x, y)
 ```
 

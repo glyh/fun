@@ -1,6 +1,6 @@
 ---
 title: A written bound on an impl head
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: open
@@ -34,7 +34,7 @@ Two impls with the same head and the same declared type, differing only in the m
 body, and a program comparing lists of a type with no `Eq` of its own
 (`rec Foo = enum { F }; open Foo;` then `Cons[Foo](F, Nil[Foo]) == Cons[Foo](F, Nil[Foo])`):
 
-```fun
+```quill
 # body never mentions the element
 pub impl probe : Eq(List(A)) = module { fn eq(xs, ys) { True } };
 #   -> VALUE True        Foo's lack of Eq is irrelevant; the impl needs no dictionary
@@ -53,7 +53,7 @@ none.
 
 ## The proposed form, which does not exist yet
 
-```fun
+```quill
 pub impl probe[A : Eq] : Eq(List(A)) = module { fn eq(xs, ys) { … } };
 ```
 
@@ -84,7 +84,7 @@ stops deciding who can use the impl.
 
 Ruled: **the declaration decides, not the body.** Written in the form the ruling was made against —
 
-```fun
+```quill
 pub impl list_eq[a : Eq] : Eq(List(a)) = module { … };
 ```
 
@@ -111,7 +111,7 @@ inside a body silently changed who could use the impl, and an impl that ignores 
 claimed equality for element types that have none.
 
 **What it costs, counted:** `std` has **7** impls, of which **2** are generic and need the annotation
-(`list_eq` in `list.fun`, `option_eq` in `option.fun`); about **38** files in the suite use a generic
+(`list_eq` in `list.qll`, `option_eq` in `option.qll`); about **38** files in the suite use a generic
 impl head and need it only where they rely on the bound.
 
 ## Edges the implementation rules (2026-10-04, landed)
@@ -137,9 +137,9 @@ have to be answered first.
 
 - [A generic impl's head variable carries no bound](generic-impl-head-var-has-no-bound.md)
   — the fix, its root cause, and the measurement table
-- `src/Fun.Compiler/Elaborator.Traits.cs` — `ImplBound`, the promotion of pending
+- `src/Quill.Compiler/Elaborator.Traits.cs` — `ImplBound`, the promotion of pending
   evidence into dictionary arguments, and the impl's `Pi` type
-- `src/Fun.Compiler/Elaborator.Export.cs` — how an impl's `Vars`/`Bounds` travel through
+- `src/Quill.Compiler/Elaborator.Export.cs` — how an impl's `Vars`/`Bounds` travel through
   `export`, which a written bound would also have to survive
 - [trait library deriving and protocols](design-trait-library-deriving-and-protocols.md)
   — `derive` is the case that would most want to state a bound it can prove

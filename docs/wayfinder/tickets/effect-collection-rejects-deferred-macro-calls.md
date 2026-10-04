@@ -1,6 +1,6 @@
 ---
 title: Effect collection rejects a deferred typed macro call
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -25,7 +25,7 @@ should not reach elaboration" and aborts:
 It is hit when a deferred call sits somewhere effect collection walks before the
 elaborator reaches it, e.g. inside a lambda body that a macro's output adds:
 
-```fun
+```quill
 macro inner(x : Expr(I64)) : Expr(I64) { x };
 macro under(x : Expr(I64)) : Expr(I64) { quote((fn(z : I64) { $x })(0)) };
 under(inner(z))

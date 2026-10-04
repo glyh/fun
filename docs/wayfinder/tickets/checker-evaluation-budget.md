@@ -1,6 +1,6 @@
 ---
 title: The checker evaluates under a budget, not a termination check
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

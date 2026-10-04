@@ -1,0 +1,276 @@
+using Quill.Kernel;
+
+namespace Quill.Expand;
+
+public sealed partial class Expander
+{
+    /// <summary>
+    /// The compiler-known base roles, always in scope: <c>&lt;-</c> and its order
+    /// group <c>assignment</c> -- weakest (weaker than every group that states no
+    /// relation to it) and non-associative -- and <c>~&gt;</c>, read like <c>-&gt;</c>.
+    /// </summary>
+    private static void AddBaseRoles(BinderTable table)
+    {
+        var assignment = new Order("assignment@base", "assignment", Assoc.None, Weakest: true, [], []);
+        table.Extend("assignment", ScopeSet.Empty, "assignment", BinderMeaning.Role,
+            new Role(Fixity.Prefix, assignment, RoleMeaning.OrderGroup.Instance, SourceSpan.Synthetic, null));
+        table.Extend("<-", ScopeSet.Empty, "<-", BinderMeaning.Role,
+            new Role(Fixity.Infix, assignment, RoleMeaning.AssignRef.Instance, SourceSpan.Synthetic, null));
+        table.Extend("~>", ScopeSet.Empty, "~>", BinderMeaning.Role,
+            new Role(Fixity.Infix, null, RoleMeaning.PolyArrow.Instance, SourceSpan.Synthetic, null));
+    }
+
+    /// <summary>Every intro scope an application minted here.</summary>
+    private readonly HashSet<int> _introScopes = [];
+
+    /// <summary>An enforester reading forms with the roles bound so far (M9).</summary>
+    private Enforest Reader() => Enforest.Lazy(_bindings, UnitRoles);
+
+    /// <summary>
+    /// M7: a syntactic role never mixes with another binder of its name where
+    /// both are visible. A new binder written with scope set
+    /// <paramref name="occurrence"/> conflicts with an existing binder of the
+    /// other sort whose scope set is a subset of it -- unless the scopes the new
+    /// binder has beyond it include an intro scope (an application wrote it, and
+    /// hygiene keeps the two apart), or it is a fixity-only role attaching to a value.
+    /// </summary>
+    private void CheckRoleMixing(string name, ScopeSet occurrence, bool isRole, bool attaches, bool group)
+    {
+        if (group) return;
+        foreach (var existing in _bindings.Candidates(name))
+        {
+            // A syntax form, operator or macro is a role's sort of binder (M7); only a value is not.
+            if (existing.IsGroup || (existing.Kind != BinderMeaning.Value) == isRole) continue;
+            if (!existing.Scope.IsSubsetOf(occurrence)) continue;
+            if (occurrence.Except(existing.Scope).Values.Any(_introScopes.Contains)) continue;
+            if (attaches && existing.Kind == BinderMeaning.Value) continue;
+            throw new RoleException($"`{name}` is both a syntactic role and a value binder where both are visible");
+        }
+    }
+
+    /// <summary>A syntax form or fixity declaration as a binder: the forms read after it resolve its role by scope set.</summary>
+    private ScopeSet BindRole(Id name, Role role)
+    {
+        var scope = FreshScope();
+        BindRoleAt(name.Name, name.Scope, scope, name.Name, role);
+        return scope;
+    }
+
+    /// <summary>
+    /// A role binder written with <paramref name="written"/> and bound in the region
+    /// <paramref name="region"/> marks; noted against every open whose region it is in.
+    /// </summary>
+    private void BindRoleAt(string name, ScopeSet written, ScopeSet region, string resolved, Role role)
+    {
+        var group = role.Meaning is RoleMeaning.OrderGroup;
+        CheckRoleMixing(name, written, isRole: true, role.Attaches, group);
+        if (!group) NoteRoleInOpens(name, written, role);
+        _bindings.Extend(name, written.Union(region), resolved, BinderMeaning.Role, role);
+    }
+
+    // ---- application --------------------------------------------------------
+
+    /// <summary>
+    /// The one hygiene contract of an application (M2): what it receives gets a
+    /// fresh use-site scope and a fresh intro scope; what it returns has the
+    /// intro scope flipped, so ids it received lose it again and ids the rule
+    /// wrote gain it -- neither side can capture the other's.
+    /// </summary>
+    private sealed record Application(SyntaxMapper Receive, SyntaxMapper Emit, SyntaxMapper PruneUseSite);
+
+    private Application NewApplication(string? fromUnit)
+    {
+        var useSite = _scopeCounter++;
+        var intro = _scopeCounter++;
+        _introScopes.Add(intro);
+        if (fromUnit is not null) _introScopeUnits[intro] = fromUnit;
+        return new Application(
+            SyntaxMapper.OfIds(id => id with { Scope = id.Scope.Add(useSite).Add(intro) }),
+            SyntaxMapper.OfIds(id => id with { Scope = id.Scope.Contains(intro) ? id.Scope.Remove(intro) : id.Scope.Add(intro) }),
+            SyntaxMapper.OfIds(id => id with { Scope = id.Scope.Remove(useSite) }));
+    }
+
+    /// <summary>A syntax form's use in expression position: its replacement filled with the captures, expanded in place.</summary>
+    private Syntax ExpandInstantiate(Syntax.Instantiate use)
+    {
+        var app = NewApplication(use.Instantiation.FromUnit);
+        var captures = Receive(app, use.Instantiation);
+        if (use.Instantiation.Rule.Replacement is not Replacement.Expr expr)
+            throw new ExpandException($"syntax form {use.Instantiation.Form.Name} returns declarations where an expression goes", use.Span);
+        return Expand(expr.Syntax.Map(Fill(captures)).Map(app.Emit));
+    }
+
+    /// <summary>A declaration syntax form's use: the declarations it returns, ready to be bound where it was written.</summary>
+    private EquatableArray<Binding> InstantiateDecls(Instantiation inst)
+    {
+        var app = NewApplication(inst.FromUnit);
+        var captures = Receive(app, inst);
+        if (inst.Rule.Replacement is not Replacement.Decls decls)
+            throw new ExpandException($"syntax form {inst.Form.Name} returns an expression where declarations go", inst.Form.Span);
+        var fill = Fill(captures);
+        return [.. SpliceDeclHoles(captures, decls.Bindings.Select(b => b.Map(fill))).Select(b => EmitBinding(app, b))];
+    }
+
+    private static Dictionary<string, Capture> Receive(Application app, Instantiation inst) =>
+        inst.Captures.ToDictionary(c => c.Hole, c => app.Receive.MapCapture(c.Capture));
+
+    // ---- filling ------------------------------------------------------------
+
+    private static string? HoleOf(string name) => name is ['$', _, ..] ? name[1..] : null;
+
+    /// <summary>
+    /// Fills a replacement with what its rule's holes captured (M9). A hole is an
+    /// id spelled <c>$x</c>: in expression position it takes the capture itself,
+    /// as a name the captured identifier, as a pattern the captured pattern, as
+    /// an item the captured declarations, and as a <c>{ … }</c> the captured block.
+    /// A rule the replacement declares binds its own holes, which are left alone.
+    /// </summary>
+    private static SyntaxMapper Fill(IReadOnlyDictionary<string, Capture> captures)
+    {
+        Capture? Find(string name) => HoleOf(name) is { } hole && captures.TryGetValue(hole, out var c) ? c : null;
+        ExpandException Unfit(string what, string name) => new($"the hole {name} does not fit {what}");
+
+        Rule FillRule(SyntaxMapper _, Rule rule)
+        {
+            var inner = RuleHoles(rule.Pattern).ToHashSet();
+            return SyntaxMapper.MapRuleDefault(Fill(captures.Where(c => !inner.Contains(c.Key)).ToDictionary()), rule);
+        }
+
+        return new SyntaxMapper
+        {
+            Id = id => Find(id.Name) is Capture.Id c ? SyntaxMapper.TokenId(c.Token) : id,
+            Token = token => token.Kind is TokenKind.Ident i && Find(i.Name) is Capture.Id c ? c.Token with { Span = token.Span } : token,
+            Form = form => form switch
+            {
+                Syntax.Var v => Find(v.Id.Name) switch
+                {
+                    Capture.Expr e => e.Syntax,
+                    Capture.Block b => new Syntax.Block(b.Terms, v.Span),
+                    null or Capture.Id => form,
+                    _ => throw Unfit("an expression", v.Id.Name),
+                },
+                Syntax.Block { Terms: [TokenTree.Leaf { Token.Kind: TokenKind.Ident i }] } block => Find(i.Name) switch
+                {
+                    Capture.Block b => block with { Terms = b.Terms },
+                    Capture.Expr e => e.Syntax,
+                    null => form,
+                    _ => throw Unfit("a { … } body", i.Name),
+                },
+                Syntax.Module m => m with { Bindings = SpliceDeclHoles(captures, m.Bindings) },
+                Syntax.Struct s => s with { Bindings = SpliceDeclHoles(captures, s.Bindings) },
+                _ => form,
+            },
+            Binding = binding => binding is Binding.Items { Terms: [TokenTree.Leaf { Token.Kind: TokenKind.Ident i }] } items
+                ? Find(i.Name) switch
+                {
+                    Capture.Block b => items with { Terms = b.Terms },
+                    null => binding,
+                    _ => throw Unfit("a { … } body", i.Name),
+                }
+                : binding,
+            Pattern = pattern => pattern is Pattern.Bind b
+                ? Find(b.Name.Name) switch
+                {
+                    Capture.Pattern p => p.Value,
+                    null or Capture.Id => pattern,
+                    _ => throw Unfit("a pattern", b.Name.Name),
+                }
+                : pattern,
+            Rule = FillRule,
+            UsedRule = FillRule,
+            // A hole written as a macro's whole argument takes the captured tokens.
+            Capture = capture => capture switch
+            {
+                Capture.Expr { Syntax: Syntax.Var v } => Find(v.Id.Name) as Capture.Tokens,
+                Capture.Tokens { Terms: [TokenTree.Leaf { Token.Kind: TokenKind.Ident i }] } => Find(i.Name) as Capture.Tokens,
+                _ => null,
+            },
+        };
+    }
+
+    private static EquatableArray<Binding> SpliceDeclHoles(IReadOnlyDictionary<string, Capture> captures, IEnumerable<Binding> bindings) =>
+        [.. bindings.SelectMany(b => b is Binding.Hole h && HoleOf(h.Name.Name) is { } hole && captures.TryGetValue(hole, out var c)
+            ? c switch
+            {
+                Capture.Decls d => d.Bindings,
+                Capture.Decl d => [d.Binding],
+                _ => throw new ExpandException($"the hole {h.Name.Name} does not fit a declaration", h.Name.Span),
+            }
+            : [b])];
+
+    private static IEnumerable<string> RuleHoles(IEnumerable<RulePart> parts) => parts.SelectMany(p => p switch
+    {
+        RulePart.Hole h => [h.Name],
+        RulePart.Group g => RuleHoles(g.Parts),
+        _ => [],
+    });
+
+    // ---- blocks -------------------------------------------------------------
+
+    /// <summary>
+    /// A block whose first statement uses a declaration syntax form: its
+    /// declarations scope over the rest of the block, which is read after them.
+    /// </summary>
+    private Syntax? ExpandBlockDeclForm(Syntax.Block block)
+    {
+        (Instantiation, Terms)? use;
+        use = Reader().BlockDeclForm(new Terms(block.Terms));
+        if (use is not var (inst, rest)) return null;
+
+        Syntax body = rest.IsEmpty ? new Syntax.Atom(Atom.Unit.Instance, block.Span) : new Syntax.Block(rest.ToArray(), rest.Span);
+        var decls = InstantiateDecls(inst).SelectMany(BlockDecls).ToList();
+        for (var i = decls.Count - 1; i >= 0; i--) body = DeclOver(decls[i], body);
+        return Expand(body);
+    }
+
+    /// <summary>A block's declarations as the private declarations that scope over the rest: unread items are read.</summary>
+    private IEnumerable<Binding> BlockDecls(Binding binding)
+    {
+        if (binding is Binding.MacroCall call) return ApplyDeclMacro(call).SelectMany(BlockDecls);
+        if (binding is not Binding.Items items) return [binding];
+        var read = new List<Binding>();
+        var terms = new Terms(items.Terms);
+        while (!Enforest.DropSeparators(terms).IsEmpty)
+        {
+            var (stmt, after) = Enforest.TakeStatement(terms);
+            read.AddRange(Reader().ParseModuleStatement(stmt));
+            terms = Enforest.RequireAdvance(terms, after);
+        }
+        return read.SelectMany(BlockDecls);
+    }
+
+    /// <summary>A declaration in a block, as the form that scopes it over the rest.</summary>
+    private static Syntax DeclOver(Binding binding, Syntax body) => binding switch
+    {
+        Binding.Let { Public: false } l => new Syntax.Let(l.Name, null, l.Value, body, l.Recursive, body.Span),
+        Binding.RecGroup { Public: false } g => new Syntax.LetRecGroup(g.Members, body, body.Span),
+        Binding.SyntaxDecl { Public: false } s => new Syntax.SyntaxDef(s.Name, s.Role, body, body.Span),
+        Binding.Macro { Public: false } m => new Syntax.MacroDef(m.Name, m.Value, body, m.Kind, m.Output, body.Span),
+        Binding.Effect { Public: false } e => new Syntax.EffectDef(e.Name, e.Params, e.Ops, body, body.Span),
+        Binding.Trait { Public: false } t => new Syntax.TraitDef(t.Name, t.Param, t.Fields, body, body.Span),
+        Binding.Impl { Public: false, Fields: { } fields } i => new Syntax.ImplDef(i.Name, i.Binders, i.TraitPath, i.Arg, fields, body, body.Span),
+        Binding.Open o => new Syntax.Open(o.Of, body, o.Label, body.Span) { Names = o.Names },
+        // A generated export is dropped: the site decides what each item a
+        // declaration macro emits means there, and a block exports nothing. A
+        // written one never reaches here -- the block statement parser rejects it.
+        Binding.Export { Public: false } => body,
+        _ => throw new ExpandException("a declaration syntax form in a block writes only private lets, types, effects, traits, impls, opens, macros and syntax", body.Span),
+    };
+
+    /// <summary><c>pub</c> on a declaration form's use publishes every declaration it returns.</summary>
+    private static Binding Publish(Binding binding) => binding switch
+    {
+        Binding.Let l => l with { Public = true },
+        Binding.RecGroup g => g with { Public = true },
+        Binding.Method m => m with { Public = true },
+        Binding.SyntaxDecl s => s with { Public = true },
+        Binding.Instantiate i => i with { Public = true },
+        Binding.Macro m => m with { Public = true },
+        Binding.MacroCall c => c with { Public = true },
+        Binding.Effect e => e with { Public = true },
+        Binding.Trait t => t with { Public = true },
+        Binding.Impl i => i with { Public = true },
+        Binding.Export e => e with { Public = true },
+        _ => binding,
+    };
+}

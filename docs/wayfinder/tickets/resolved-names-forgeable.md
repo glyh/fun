@@ -1,6 +1,6 @@
 ---
 title: A resolved name can be forged, and context-less ids fall back to spelling
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -33,7 +33,7 @@ Found by the domain-model audit (2026-09-15), re-verified on `main` `fa2f32d`.
 
 ## Example
 
-```fun
+```quill
 x = 5;
 macro steal(_) { Syntax.RawVar(None, Syntax.new_id("x#5")) };  // x's minted name
 steal(0)   // reaches x today; should be unbound

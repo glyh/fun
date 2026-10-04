@@ -23,7 +23,7 @@ Add useful generic programming over runtime `Type` values by extending existing 
 - [x] all three match paths wired: `infer`, `check` (VU scrutinee), `check` (ordinary scrutinee), and `collect_effects`
 - [x] lambda bodies treated as pure in `collect_effects` to avoid spurious unification
 
-```fun
+```quill
 is_zeroish : [T : Type] -> T -> Bool = fn[T : Type](x) ->
   match T do
   I64 -> x == 0
@@ -91,7 +91,7 @@ Extend type-case refinement to nominal type heads after primitive heads are stab
 
 Example:
 
-```fun
+```quill
 do
   type Option(A) = Some(A) | None
   classify : Type -> I64 = fn(T) ->

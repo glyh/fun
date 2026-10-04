@@ -4,7 +4,7 @@ Guidance for working in this repository.
 
 ## Project overview
 
-`fun` is a programming language compiler/interpreter. The implementation is **C# (.NET 10)**: the
+`quill` is a programming language compiler/interpreter. The implementation is **C# (.NET 10)**: the
 compiler tree is `src/`, the prelude source is `std/`, and the tests are `test/`. The earlier
 OCaml prototype was **removed on 2026-09-25** — see *History* at the end,
 which keeps the knowledge that was learned while it was the reference.
@@ -20,22 +20,22 @@ Design philosophy: **Consistency > Flexibility > Correctness** — one construct
 
 ```sh
 dotnet build                                         # everything
-dotnet test test/Fun.Tests                           # xUnit (internals)
-dotnet run --project test/Fun.Conformance            # the shared language suite
+dotnet test test/Quill.Tests                           # xUnit (internals)
+dotnet run --project test/Quill.Conformance            # the shared language suite
 ```
 
-There is **no REPL**: `src/Fun.Cli` is a stub that prints `fun: the .NET port has no entry
+There is **no REPL**: `src/Quill.Cli` is a stub that prints `quill: the .NET port has no entry
 point yet` and exits 1. To run one program, use the suite's single-file mode (below).
 
 A single conformance program, the way the suite judges it:
 
 ```sh
-dotnet test/Fun.Conformance/bin/Debug/net10.0/Fun.Conformance.dll --file /tmp/probe.fun
+dotnet test/Quill.Conformance/bin/Debug/net10.0/Quill.Conformance.dll --file /tmp/probe.qll
 ```
 
-**The three-project split is load-bearing**: `Fun.Kernel` (atoms, terms, values, patterns,
-decision trees), `Fun.Expand` (reader, enforestation, macros — it **cannot reference the
-elaborator**), `Fun.Compiler` (elaboration, unification, the evaluator). `Fun.Cli` is the
+**The three-project split is load-bearing**: `Quill.Kernel` (atoms, terms, values, patterns,
+decision trees), `Quill.Expand` (reader, enforestation, macros — it **cannot reference the
+elaborator**), `Quill.Compiler` (elaboration, unification, the evaluator). `Quill.Cli` is the
 executable. Do not add a reference that crosses the first boundary.
 
 ### Documentation hierarchy
@@ -43,7 +43,7 @@ executable. Do not add a reference that crosses the first boundary.
 - `docs/STATUS.md` — **authoritative** snapshot of what is built; when any doc disagrees on
   completion status, STATUS wins.
 - `docs/wayfinder/` — the direction map (decided / open tickets / fog); start at
-  `docs/wayfinder/fun-design-map.md`. Design detail for decided directions lives in `topics/`,
+  `docs/wayfinder/quill-design-map.md`. Design detail for decided directions lives in `topics/`,
   the macro-system reference in `macro-system/`.
 
 ### Pipeline
@@ -54,22 +54,22 @@ source → reader → enforestation → expanded Syntax → elaboration → Core
 
 ### Source layout
 
-- `src/Fun.Kernel/` — `Atom`, `Core` (`Core.Shift`, `Core.Match`, `Core.Patterns`,
+- `src/Quill.Kernel/` — `Atom`, `Core` (`Core.Shift`, `Core.Match`, `Core.Patterns`,
   `Core.Refs`), `Syntax`, the decision trees, `EquatableArray`
-- `src/Fun.Expand/` — the reader, `Enforest` (+ `Enforest.Roles`, `Enforest.Match`),
+- `src/Quill.Expand/` — the reader, `Enforest` (+ `Enforest.Roles`, `Enforest.Match`),
   `Expander` (+ `.Macros`, `.Roles`, `.Imports`), `MacroRuntime`
-- `src/Fun.Compiler/` — `Elaborator` split across partial files (`Elaborator.Traits`,
+- `src/Quill.Compiler/` — `Elaborator` split across partial files (`Elaborator.Traits`,
   `.Patterns`, `.RecTypes`, `.Generative`, `.Implicits`, `.Effects`, `.Match`, …), `Unify`,
   `Nbe` (+ `Nbe.Match`, `.StuckMatch`, `.Effects`, `.Generative`), `Reflection`, `Budget`,
   `Driver`, `Loader`
-- `std/` — the prelude source, split into a bootstrap layer (`bootstrap.fun`) and the library
-  (`lib.fun`, `list.fun`, `option.fun`, `type.fun`) with `stage2.fun` as the unit a program
-  imports, embedded into `Fun.Compiler` as resources by its `.csproj`
-- `test/conformance/cases/` — the language suite: `.fun` + `.expect` pairs, nothing to register
+- `std/` — the prelude source, split into a bootstrap layer (`bootstrap.qll`) and the library
+  (`lib.qll`, `list.qll`, `option.qll`, `type.qll`) with `stage2.qll` as the unit a program
+  imports, embedded into `Quill.Compiler` as resources by its `.csproj`
+- `test/conformance/cases/` — the language suite: `.qll` + `.expect` pairs, nothing to register
   (`cases/README.md`)
-- `test/Fun.Tests/` — xUnit, internals only
-- `test/Fun.Conformance/` — the suite's runner; `test/Fun.Cli` lives at `src/Fun.Cli`
-- `Fun.slnx`, `Directory.Build.props` — the solution and the settings every project shares
+- `test/Quill.Tests/` — xUnit, internals only
+- `test/Quill.Conformance/` — the suite's runner; `test/Quill.Cli` lives at `src/Quill.Cli`
+- `Quill.slnx`, `Directory.Build.props` — the solution and the settings every project shares
 
 ### Where a test goes
 
@@ -102,7 +102,7 @@ or a type rather than a value.
   representation, and capture the output:
 
   ```sh
-  dotnet build 2>&1 && dotnet test test/Fun.Tests --nologo 2>/tmp/log
+  dotnet build 2>&1 && dotnet test test/Quill.Tests --nologo 2>/tmp/log
   ```
 
   The goal is one diagnostic that pins the root cause, not a matrix of modified inputs.
@@ -139,7 +139,7 @@ transfer: each one is a trap the port can still fall into, in its own idiom.
 
 When adding a nominal type for macros to inspect and construct:
 
-1. **Prelude**: declare it in `std/stage1.fun`'s `Syntax` module (stage 1 has no `type`
+1. **Prelude**: declare it in `std/stage1.qll`'s `Syntax` module (stage 1 has no `type`
    macro — that is defined in stage 2) as `pub rec Foo = enum { … }; export Foo;`, and add
    builders (`pub foo_build = fn(args…) { … }`).
 2. **Nominals**: add the field to the syntax-nominals registry the macro evaluator builds.
@@ -178,4 +178,4 @@ The expander processes macros during parsing (it needs `elaborate` and `eval_and
 callbacks); the elaborator turns expanded `Syntax` into the core term. Macros are compiled by the
 **expander** using the `elaborate` callback, and imported modules' macros are pre-compiled and
 cached, then pre-registered in the expander. In the port these are `Expander`/`MacroRuntime` and
-`Elaborator`; the same split, and the same reason `Fun.Expand` cannot reference `Fun.Compiler`.
+`Elaborator`; the same split, and the same reason `Quill.Expand` cannot reference `Quill.Compiler`.

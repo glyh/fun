@@ -1,6 +1,6 @@
 ---
 title: Macro bodies implicitly open the prelude
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -34,7 +34,7 @@ not hold.
   implicitly opened body would give the body and its quoted ids two different
   scopes.
 - **Sets of scopes / Racket.** A transformer is compiled in its definition
-  site's scope; Racket is stricter still (`for-syntax` requires). `fun` has no
+  site's scope; Racket is stricter still (`for-syntax` requires). `quill` has no
   phases, so the plain rule applies.
 - **The strict-open rule has no exceptions** once this is removed.
 

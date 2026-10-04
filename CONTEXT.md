@@ -1,6 +1,6 @@
-# fun
+# quill
 
-`fun` is an experimental dependently-typed language. Source becomes a `Core`
+`quill` is an experimental dependently-typed language. Source becomes a `Core`
 term through enforestation, macro expansion and bidirectional elaboration, and a
 term becomes a value through normalisation by evaluation.
 
@@ -306,7 +306,7 @@ block or through `open`.
 _Avoid_: namespace, record (a struct is the record-shaped thing)
 
 **Compilation unit**:
-A `.fun` file, reached by `import`. Not a module expression and not first-class:
+A `.qll` file, reached by `import`. Not a module expression and not first-class:
 it has no context to capture, so it is the one thing that can sensibly be
 required to be base-anchored. Conflating it with a module is what made "modules
 must be closed" sound like it would break first-class modules.

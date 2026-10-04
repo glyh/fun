@@ -5,7 +5,7 @@ charts how loose ideas become decisions. A map is an *index, not a store*: it gi
 each decision in one line and links to the topic doc that holds the detail, tracks
 open questions as tickets, and writes down still-dim directions as fog.
 
-- **[`fun-design-map.md`](fun-design-map.md)** — the map (labelled `wayfinder:map`).
+- **[`quill-design-map.md`](quill-design-map.md)** — the map (labelled `wayfinder:map`).
   Start here. Its Notes / Decisions-so-far / Fog / Open-questions sections are the
   whole project direction at low resolution.
 - **[`tickets/`](tickets/)** — one file per open or closed question; a ticket's

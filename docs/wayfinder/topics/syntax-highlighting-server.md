@@ -1,6 +1,6 @@
 # Syntax highlighting server
 
-A design for precise, incremental syntax highlighting for `fun`, built as a
+A design for precise, incremental syntax highlighting for `quill`, built as a
 long-running compiler server with a thin editor client. The server does all
 language-specific work; the client only applies spans. The same server targets
 every editor.
@@ -27,7 +27,7 @@ interface.
 
 ```
 ┌─────────────┐   msgpack-RPC over stdio   ┌──────────────────────┐
-│  editor      │ ◄────────────────────────► │  fun-highlight server │
+│  editor      │ ◄────────────────────────► │  quill-highlight server │
 │  (thin)      │   did_open / did_change    │  (.NET, long-running) │
 │              │ ◄────────────────────────  │                      │
 │              │   highlight spans           │  reader → enforester │
@@ -38,7 +38,7 @@ interface.
 
 The server is a standalone process. The editor spawns it, sends buffer text,
 receives highlight spans. The editor never parses, never resolves bindings,
-never understands fun's grammar.
+never understands quill's grammar.
 
 ## Why tree-sitter's pattern, not tree-sitter's API
 
@@ -126,14 +126,14 @@ maps roles to its own highlight system:
 
 | role | neovim | VS Code | Emacs |
 |---|---|---|---|
-| `variable` | `@variable` | `variable.other.fun` | `font-lock-variable-name-face` |
-| `type` | `@type` | `entity.name.type.fun` | `font-lock-type-face` |
-| `constructor` | `@constructor` | `entity.name.function.fun` | `font-lock-function-name-face` |
-| `operator` | `@operator` | `keyword.operator.fun` | `font-lock-builtin-face` |
-| `keyword` | `@keyword` | `keyword.control.fun` | `font-lock-keyword-face` |
-| `macro` | `@macro` | `entity.name.function.macro.fun` | `font-lock-preprocessor-face` |
-| `string` | `@string` | `string.quoted.double.fun` | `font-lock-string-face` |
-| `comment` | `@comment` | `comment.line.fun` | `font-lock-comment-face` |
+| `variable` | `@variable` | `variable.other.qll` | `font-lock-variable-name-face` |
+| `type` | `@type` | `entity.name.type.qll` | `font-lock-type-face` |
+| `constructor` | `@constructor` | `entity.name.function.qll` | `font-lock-function-name-face` |
+| `operator` | `@operator` | `keyword.operator.qll` | `font-lock-builtin-face` |
+| `keyword` | `@keyword` | `keyword.control.qll` | `font-lock-keyword-face` |
+| `macro` | `@macro` | `entity.name.function.macro.qll` | `font-lock-preprocessor-face` |
+| `string` | `@string` | `string.quoted.double.qll` | `font-lock-string-face` |
+| `comment` | `@comment` | `comment.line.qll` | `font-lock-comment-face` |
 
 The mapping is a simple dictionary in each client. The server never learns
 what editor it is talking to.
@@ -227,10 +227,10 @@ text edits and can be individually managed, unlike `nvim_buf_add_highlight`.
 ```lua
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("fun")
+local ns = vim.api.nvim_create_namespace("quill")
 
 local function spawn()
-  local channel = vim.fn.jobstart({ "fun", "highlight", "--server" }, { rpc = true })
+  local channel = vim.fn.jobstart({ "quill", "highlight", "--server" }, { rpc = true })
   local session = vim.fn.rpcrequest(channel, "initialize").session_id
   return channel, session
 end
@@ -251,7 +251,7 @@ end
 ```
 
 The Lua code is: spawn, send, receive, apply. No parsing, no query matching,
-no understanding of fun's grammar.
+no understanding of quill's grammar.
 
 ### Other editors
 
@@ -261,17 +261,17 @@ now. The protocol is the same; only the client changes.
 
 ## Project structure
 
-A new project `Fun.Highlight` (or a `--server` mode on `Fun.Cli`):
+A new project `Quill.Highlight` (or a `--server` mode on `Quill.Cli`):
 
 ```
-src/Fun.Highlight/
+src/Quill.Highlight/
   Server.cs         -- msgpack-RPC server, stdio transport, session manager
   Tree.cs           -- elaborated tree, node format, incremental updates
   Query.cs          -- S-expression query parser and matcher
   Highlight.cs      -- role → span extraction, default queries
 ```
 
-The server references `Fun.Compiler` (for the reader, enforester, elaborator)
+The server references `Quill.Compiler` (for the reader, enforester, elaborator)
 and `MessagePack-CSharp` (for serialization). It does not reference any editor
 library.
 

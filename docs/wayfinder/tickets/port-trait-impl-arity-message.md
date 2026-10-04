@@ -53,7 +53,7 @@ enforces the rule), and the port's refusal becomes the same language error that 
 
 ## Reading
 
-- `Reflection.cs:723`, `:731`, `:767`, `:927`, `:933`; `dotnet/src/Fun.Kernel/Syntax.Traits.cs:9,17,29,36`
+- `Reflection.cs:723`, `:731`, `:767`, `:927`, `:933`; `dotnet/src/Quill.Kernel/Syntax.Traits.cs:9,17,29,36`
 - [the probed rows' conversions](port-probed-row-conversions.md) — the same shape of work
   (a refusal reclassified), done earlier
 

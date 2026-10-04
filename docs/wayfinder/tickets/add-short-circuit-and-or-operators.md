@@ -1,6 +1,6 @@
 ---
 title: Add short-circuit && / || operators
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

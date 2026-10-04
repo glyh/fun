@@ -78,7 +78,7 @@ semicolons, brackets, explicit end keywords all good … A couple more character
 is always a worthwhile trade" (10), and "i find this ambiguity much more confusing" (15) — comments
 on that thread. Neither side offers a measurement.
 
-**Tried by.** (a) Rust, Go-with-`;`, `fun`; (b) JavaScript, Go, Swift; (c) Lua.
+**Tried by.** (a) Rust, Go-with-`;`, `quill`; (b) JavaScript, Go, Swift; (c) Lua.
 
 **Source.** *No Semicolons Needed — How languages get away with not requiring semicolons* — 122,
 103 comments, 2026-03-18, <https://www.reddit.com/r/ProgrammingLanguages/comments/1rx9tcx/no_semicolons_needed_how_languages_get_away_with/>. *Questions about Semicolon-less Languages* — 35, 49 comments, 2024-08-12,
@@ -88,7 +88,7 @@ statements, but not after blocks?* — 37, 46 comments, 2023-02-19,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1168rmc/why_do_clike_languages_require_semicolons_after/> (the asymmetry: blocks never need one because they are self-delimiting). *Semicolon Inference* — 36,
 65 comments, 2020-04-04, <https://www.reddit.com/r/ProgrammingLanguages/comments/fuze6o/semicolon_inference/> (link post, no body; engagement only).
 
-**Bearing on `fun`.** Already has it, (a): "Newlines are whitespace; `;` is written" — decided
+**Bearing on `quill`.** Already has it, (a): "Newlines are whitespace; `;` is written" — decided
 2026-09-14 in `tickets/surface-syntax-braces.md`, with the trailing `;` before `}` discarding the
 group's value. Nothing here is open.
 
@@ -116,9 +116,9 @@ comments, 2023-12-10,
 comments, 2022-01-15,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/s4t715/how_do_i_parse_haskell_style_applications_in_a/> (application is an infix operator whose token is whitespace the lexer throws away).
 
-**Bearing on `fun`.** Rejected, and the rejection is load-bearing. Macro calls are ordinary
+**Bearing on `quill`.** Rejected, and the rejection is load-bearing. Macro calls are ordinary
 `f(args)` application — `tickets/unify-macro-call-syntax-with-functions.md`, closed and implemented —
-which is *why* a newline can be plain whitespace in `fun`: nothing can continue across it. Any
+which is *why* a newline can be plain whitespace in `quill`: nothing can continue across it. Any
 future move to juxtaposition application would reopen the terminator question at the same time.
 
 ### The off-side rule as the only block delimiter
@@ -156,8 +156,8 @@ syntax in Tuplex* — 36, 39 comments, 2020-12-01,
 inference in language with application by juxtaposition?* — 13, 12 comments, 2023-12-10,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/18eve8k/endofstatement_inference_in_language_with/> ("significant indentation was far easier to implement" than semicolon insertion).
 
-**Bearing on `fun`.** Rejected, with the reason recorded: `tickets/brackets-decide-grouping.md`
-(closed 2026-09-27) adopts Rhombus's structural extents explicitly *without* layout — "`fun` has
+**Bearing on `quill`.** Rejected, with the reason recorded: `tickets/brackets-decide-grouping.md`
+(closed 2026-09-27) adopts Rhombus's structural extents explicitly *without* layout — "`quill` has
 no indentation-sensitive syntax"; `{}`, `[]`, `()`, `,` and `;` carry all structure. No open ticket
 contemplates layout.
 
@@ -194,7 +194,7 @@ language and asks for its downsides.
 <https://www.reddit.com/r/ProgrammingLanguages/comments/in3d8r/what_tiny_thing_annoys_you_about_some_programming/>
 (comment evidence only: the `foo (bar)` / `foo(bar)` cost above).
 
-**Bearing on `fun`.** Genuinely new — and it collides head-on with a `fun` decision. Spacing cannot
+**Bearing on `quill`.** Genuinely new — and it collides head-on with a `quill` decision. Spacing cannot
 decide grouping because grouping is decided by declared order relations between groups
 (`brackets-decide-grouping.md`), and because a macro's arguments are read as syntax objects whose
 extent must be stable under any edit a macro makes. No ticket names it.
@@ -226,8 +226,8 @@ the rest left to the library (comment on *Why don't more languages include "unti
 **Maturity.** `shipped` for reserved sets (C, Rust, Go); the no-keyword variant is a hobby data
 point about interest, not evidence of viability.
 
-**Tried by.** C, Rust, Go, `fun`; Crumb (hobby, no-keyword); Honu (reserve-nothing, cited by
-`fun`'s glossary).
+**Tried by.** C, Rust, Go, `quill`; Crumb (hobby, no-keyword); Honu (reserve-nothing, cited by
+`quill`'s glossary).
 
 **Source.** *Crumb: A Programming Language with No Keywords, and a Whole Lot of Functions* — 97, 19
 comments, 2023-08-26,
@@ -239,7 +239,7 @@ language* — 0, 27 comments, 2026-02-28,
 (comment evidence only: keywords colliding with user names, and version-pinned syntax as the
 growth answer).
 
-**Bearing on `fun`.** Already has it, and the interesting detail is the *subtraction*. The glossary
+**Bearing on `quill`.** Already has it, and the interesting detail is the *subtraction*. The glossary
 (`CONTEXT.md`) fixes it: "Keywords are a fixed, reserved set of token kinds — a deliberate departure
 from Honu, which reserves nothing — and operators are one uniform token shape." Then stage 11
 increment 2 (`docs/STATUS.md`, 2026-09-16) removed `then`, `with`, `end`, `else` and `Unit` from
@@ -292,7 +292,7 @@ bash, Emacs Lisp (`when`, `unless`); Elixir (removed); Haskell and Smalltalk tak
 26 of 98 retrieved, 143 in `more`, so the retrieved sample carries both sides but not the thread's
 whole argument.
 
-**Bearing on `fun`.** Has it differently, and the answer is already half-made: the reserved set is
+**Bearing on `quill`.** Has it differently, and the answer is already half-made: the reserved set is
 fixed (`CONTEXT.md`: "Keywords are a fixed, reserved set of token kinds"), and conditionals are not
 in it — `if` and `Bool` are prelude forms (`topics/bool-and-if-as-library.md`, umbrella ticket
 `tickets/specify-stage-11-macro-powered-language-features.md`). So `unless`/`until`/`when` would be
@@ -321,7 +321,7 @@ quoted in the corpus; Unicode identifiers in mainstream languages are [general k
 corpus].
 
 **Tried by.** Go (encoding), JavaScript/Python (identifier class) [general knowledge, not from
-corpus], Genesis (non-Latin source, hobby joke), `fun` (ASCII).
+corpus], Genesis (non-Latin source, hobby joke), `quill` (ASCII).
 
 **Source.** *Is CF what's actually useful?* — 17, 34 comments, 2021-05-13,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/nbi3xh/is_cf_whats_actually_useful/> (Objection 1: specify the encoding outright, as Go does, and tools need less context). *I made an
@@ -330,9 +330,9 @@ ancient Hebrew programming language to help programmers speak to God* — 208, 3
 type system inside parser?* — 16, 17 comments, 2018-01-20,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/7rtx2z/integrating_type_system_inside_parser/> (mentions Unicode identifiers as a design goal).
 
-**Bearing on `fun`.** Genuinely new and undecided anywhere in the map or the ticket list. The
+**Bearing on `quill`.** Genuinely new and undecided anywhere in the map or the ticket list. The
 reader is ASCII-only today and fails loudly: `IdStart`/`IdContinue` are `a-zA-Z_` plus digits and
-`?!` (`src/Fun.Expand/Reader.cs:23-26`), and any other character throws `unexpected character`
+`?!` (`src/Quill.Expand/Reader.cs:23-26`), and any other character throws `unexpected character`
 (`Reader.cs:141`). Non-ASCII inside a string literal is unaffected. Worth a decision only when
 someone wants it; today nothing does.
 
@@ -351,9 +351,9 @@ out of it by hand: `|`, `->`, `=`, `:` and `^` keep dedicated token kinds precis
 would otherwise be swallowed by maximal munch.
 
 **Maturity.** `shipped` — every language whose operator set is fixed by its grammar (C, Java) does
-this [general knowledge, not from corpus]; `fun` is a case with the extension rule made explicit.
+this [general knowledge, not from corpus]; `quill` is a case with the extension rule made explicit.
 
-**Tried by.** `fun`, C, Java.
+**Tried by.** `quill`, C, Java.
 
 **Source.** *Custom operators, are they worth the effort?* — 34, 35 comments, 2024-03-22,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1bkp9ar/custom_operators_are_they_worth_the_effort/> ("from a lexical point of view it is a horror to take all of this into account and then distinguish it
@@ -361,7 +361,7 @@ from conventional punctuation" — the cost of *not* having one class). *Priorit
 operators `<<` and `>>`* — 17, 47 comments, 2022-06-10,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/v9cnzx/priority_of_the_shift_operators_and/> (adjacent-token ambiguity of `<<`/`>>` in C-style grammars).
 
-**Bearing on `fun`.** Already has it, by name. `OperatorChars` is `+-*/%=!<>@~&|` with maximal
+**Bearing on `quill`.** Already has it, by name. `OperatorChars` is `+-*/%=!<>@~&|` with maximal
 munch (`Reader.cs:27-29`, `ReadOperator`), structural punctuation keeps dedicated kinds
 (`TokenTree.cs:25-45`), and `tickets/add-short-circuit-and-or-operators.md` records the settled
 line: "operator space lexes uniformly, but structural punctuation keeps dedicated tokens."
@@ -382,10 +382,10 @@ additive < multiplicative < negation` — in six lines.
 transitively, or the program does not compile; a module that forgets to relate its operators pushes
 parentheses onto its users.
 
-**Maturity.** `research` — implemented in `fun`, with Rhombus's enforester cited as the reference
+**Maturity.** `research` — implemented in `quill`, with Rhombus's enforester cited as the reference
 for erroring on an undeclared order; no production language in this corpus claims the scheme.
 
-**Tried by.** `fun`; Rhombus (the referenced model for hole extents and undeclared-order errors).
+**Tried by.** `quill`; Rhombus (the referenced model for hole extents and undeclared-order errors).
 
 **Source.** *Relative vs absolute operator precedence for custom operators (aka. total order or
 not)* — 32, 44 comments, 2021-09-26,
@@ -393,12 +393,12 @@ not)* — 32, 44 comments, 2021-09-26,
 Operator Specification for Programming Languages* — 26, 44 comments, 2026-09-03,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1w6c8r9/unambiguous_operator_specification_for/> (the counter-position: publish one portable numeric table so expressions travel between languages).
 
-**Bearing on `fun`.** Already has it, fully implemented: `tickets/brackets-decide-grouping.md`
+**Bearing on `quill`.** Already has it, fully implemented: `tickets/brackets-decide-grouping.md`
 (order groups, transitive relations, undeclared-relation error, `assoc(none)` for `<-`, groups as
 ordinary binders resolved by scope set and exported with `pub`). Numeric precedence is gone — a
 number where a group belongs is an error naming the new form. This is one of the sharpest
-decisions `fun` has made; the corpus's two sides (declare-relatively vs publish-a-table) map onto
-it exactly, and `fun` chose the first.
+decisions `quill` has made; the corpus's two sides (declare-relatively vs publish-a-table) map onto
+it exactly, and `quill` chose the first.
 
 ### Precedence-free surfaces: strict left-to-right, or brackets as the only grouping
 
@@ -434,7 +434,7 @@ Programming Languages Had? [Discussion]* — 174, 243 comments, 2022-10-21,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/ya87l1/what_operators_do_you_wish_programming_languages/>
 (comment only: any function may be infix, with no precedence at all).
 
-**Bearing on `fun`.** Has it differently, deliberately: `fun` keeps conventional grouping but
+**Bearing on `quill`.** Has it differently, deliberately: `quill` keeps conventional grouping but
 derives it from declared relations rather than a table (`order` groups), so `1 + 2 * 3` works
 because the prelude declared `multiplicative` stronger than `additive`, not because a number says
 so. Adopting left-to-right parsing would invalidate the prelude's group chain and every conformance
@@ -469,7 +469,7 @@ modulus `%%`, a real C# proposal linked in the comment; `(x % y + y) % y` writte
 evidence that demand is specific rather than a call for symbols in general [my reading of the
 thread, not a claim anyone made].
 
-**Tried by.** Haskell, Scala, Rust (traits), Python (fixed set), `fun`.
+**Tried by.** Haskell, Scala, Rust (traits), Python (fixed set), `quill`.
 
 **Source.** *Custom operators, are they worth the effort?* — 34, 35 comments, 2024-03-22,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1bkp9ar/custom_operators_are_they_worth_the_effort/> (the case against; the author settles on Python/Rust style). *An idea for a `.=` operator* — 81, 83
@@ -479,9 +479,9 @@ Programming Languages Had? [Discussion]* — 174, 243 comments, 2022-10-21,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/ya87l1/what_operators_do_you_wish_programming_languages/>
 (comment tree fetched: 26 of 96 retrieved — both positions above come from that sample).
 
-**Bearing on `fun`.** Has it differently, and the difference is decided: any run over the uniform
+**Bearing on `quill`.** Has it differently, and the difference is decided: any run over the uniform
 operator character class may be declared `pub infix` / `pub prefix`, so the *vocabulary* is open
-while the *token shape* is not (`Reader.cs:20-29`). What `fun` deliberately does not do is let a
+while the *token shape* is not (`Reader.cs:20-29`). What `quill` deliberately does not do is let a
 declaration change how tokens are read. Collision policy (two units declaring the same sigil in one
 scope) is the open part; the closed `unify-operators-into-scope-aware-binding-table.md` settled that
 fixity is an attribute on a binding.
@@ -506,7 +506,7 @@ precedence or stage the reader behind resolution.
 the shipped partial version [general knowledge, not from corpus]); the chicken-and-egg problem is
 `contested` in the thread that asks it.
 
-**Tried by.** `fun`, Haskell, Rhombus (order groups as binders).
+**Tried by.** `quill`, Haskell, Rhombus (order groups as binders).
 
 **Source.** *Regarding Parsing with User-Defined Operators and Precedences* — 19, 55 comments,
 2025-06-08,
@@ -514,8 +514,8 @@ the shipped partial version [general knowledge, not from corpus]); the chicken-a
 with user-defined mixfix operators, precedences, and contexts* — 16, 9 comments, 2025-06-20,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1lgcbhe/an_algorithm_for_parsing_with_userdefined_mixfix/> (grammars stored as data; see the next entry).
 
-**Bearing on `fun`.** Already has it: fixity lives on a `Role`, looked up with the token's scope
-set — `BinderTable.FindRole(name, Fixity, ScopeSet)` (`src/Fun.Expand/BinderTable.cs:75`), called
+**Bearing on `quill`.** Already has it: fixity lives on a `Role`, looked up with the token's scope
+set — `BinderTable.FindRole(name, Fixity, ScopeSet)` (`src/Quill.Expand/BinderTable.cs:75`), called
 from `Enforest.Roles.cs:119,153` — so an operator's grouping is resolved by the same scope-set
 machinery as any other name, and order groups are binders (`brackets-decide-grouping.md`, item 3).
 This is precisely the design the corpus thread could not reach.
@@ -538,7 +538,7 @@ can parse your files. That is a real lock-in: no standard tool can be pointed at
 
 **Maturity.** `research` — one implementation described in detail, no production language claimed.
 
-**Tried by.** The thread's own language; `fun` reaches a related place through syntactic roles
+**Tried by.** The thread's own language; `quill` reaches a related place through syntactic roles
 rather than mixfix tables. A comment names the lineage this family belongs to: "the only thing I
 know of" for abstracting the syntax of languages with ordinary infix notation is *Honu: Syntactic
 Extension for Algebraic Notation through Enforestation* (GPCE 2012) and the work it spawned,
@@ -555,7 +555,7 @@ C++ or Rust from which the rest of language can be built?* — 52, 111 comments,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1cm8m9o/is_there_a_minimum_viable_language_within/>
 (comment evidence only: the Honu/Rhombus lineage above; its tree was fetched, 26 of 97).
 
-**Bearing on `fun`.** Has it differently, and the seam matters: `fun` already assigns every use a
+**Bearing on `quill`.** Has it differently, and the seam matters: `quill` already assigns every use a
 syntactic role and an expansion position (`Decl`, `Pattern`, expression kinds), and a template
 declares which role it fills — so per-position notation exists without per-position *tables*.
 Whether user templates may declare a role not yet in the grammar is not decided anywhere in the
@@ -586,7 +586,7 @@ grouping now point at library code the user did not write.
 [general knowledge, not from corpus]; the strong/weak `not` *split* itself is shipped by the
 languages the thread names.
 
-**Tried by.** Haskell, `fun`, Raku (an operator's fixity, argument type checks and implementation
+**Tried by.** Haskell, `quill`, Raku (an operator's fixity, argument type checks and implementation
 declared in ordinary code as `sub infix:<√> (Int \nth where * >= 0, …)`, shown working in a live
 evaluator by a commenter); the alternative (compiler-fixed tables) is everyone else.
 
@@ -595,11 +595,11 @@ evaluator by a commenter); the alternative (compiler-fixed tables) is everyone e
 `>>`* — 17, 47 comments, 2022-06-10,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/v9cnzx/priority_of_the_shift_operators_and/> (why C's inherited table is questioned at all).
 
-**Bearing on `fun`.** Already has it, twice over: `&&`/`||` are `pub infix` templates in the prelude
+**Bearing on `quill`.** Already has it, twice over: `&&`/`||` are `pub infix` templates in the prelude
 and prefix `not` is a prelude declaration (`add-short-circuit-and-or-operators.md`,
 `explicit-prelude-open-operator-demotion.md`, both implemented), and the prelude declares
 `disjunction < conjunction < comparison < additive < multiplicative < negation`. So the thread's
-question — which side to pick for logical NOT — is in `fun` a one-line prelude edit, and an
+question — which side to pick for logical NOT — is in `quill` a one-line prelude edit, and an
 alternative prelude could pick the other side without a compiler change.
 
 ### Pratt/precedence climbing: what it makes cheap, and what it cannot express
@@ -621,7 +621,7 @@ and a language that starts with a Pratt front end tends to discover this late.
 
 **Maturity.** `shipped` — the standard front end for hand-written expression parsers.
 
-**Tried by.** Most hobby and many production languages; `fun` deliberately uses neither.
+**Tried by.** Most hobby and many production languages; `quill` deliberately uses neither.
 
 **Source.** *Pratt parsing is magical* — 86, 20 comments, 2024-12-23,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1hklhsd/pratt_parsing_is_magical/>. *How do I parse Haskell style applications in a Pratt parser?* — 30, 35 comments, 2022-01-15,
@@ -631,12 +631,12 @@ a parser in 2021?* — 81, 98 comments, 2021-12-04,
 (comment only: RDP + Pratt as the recommended default; the same thread's fetched comments are used
 by the recovery and context-freeness entries below).
 
-**Bearing on `fun`.** Has it differently, and the difference is measured, not assumed:
-`grep -niE 'spec|combinator|pratt' src/Fun.Expand/*.cs` returns **0 hits** (recorded in
+**Bearing on `quill`.** Has it differently, and the difference is measured, not assumed:
+`grep -niE 'spec|combinator|pratt' src/Quill.Expand/*.cs` returns **0 hits** (recorded in
 `scope-enforester-improvements.md`'s re-derivation). Enforestation drives named order groups by
 syntactic role (`Enforest.cs:244`, `Enforest.Roles.cs:80,150,429`) — forms, not operators, consume
 input, which is what makes a macro's trailing hole read a whole expression. A Pratt driver would be
-a downgrade for `fun`; the ticket records that phase as *dropped (changed shape)*, not pending.
+a downgrade for `quill`; the ticket records that phase as *dropped (changed shape)*, not pending.
 
 ### Parse in reverse: left recursion and error recovery from the other direction
 
@@ -663,11 +663,11 @@ language here.
 recovery problems* — 106, 56 comments, 2020-05-15,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/gk1uwh/preprint_pika_parsing_parsing_in_reverse_solves/> (abstract quoted in full in the post; arXiv:2005.06444).
 
-**Bearing on `fun`.** Not applicable now, and the open ticket says why in numbers: the reader is
+**Bearing on `quill`.** Not applicable now, and the open ticket says why in numbers: the reader is
 `Reader.Read(string)` — whole source, no incremental input — and enforestation has no recovery to
 improve (`Enforest.RequireAdvance` is a non-advance guard, not recovery). Adopting a reverse driver
-would be a rewrite of `Fun.Expand` for a benefit nobody has measured. Filed here because it is the
-one parsing-technique idea in the corpus that would change what a `fun` program may contain
+would be a rewrite of `Quill.Expand` for a benefit nobody has measured. Filed here because it is the
+one parsing-technique idea in the corpus that would change what a `quill` program may contain
 (left-recursive user notation) rather than only how it is read.
 
 ### Recover to a boundary, so one error does not condemn the file
@@ -693,16 +693,16 @@ against a measured workload, or it is speculation about how often readers fail.
 **Maturity.** `shipped` as a requirement (TypeScript, cited in the thread); principled recovery
 techniques remain `research`.
 
-**Tried by.** TypeScript; Pika's parser (optimal recovery, see above); `fun` has none.
+**Tried by.** TypeScript; Pika's parser (optimal recovery, see above); `quill` has none.
 
 **Source.** *What parsing techniques do you use to support a good language server?* — 66, 52
 comments, 2022-03-01,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/t4c8ms/what_parsing_techniques_do_you_use_to_support_a/>. *Good design patterns when writing "forgiving parsers"?* — 38, 29 comments, 2019-07-17,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/ce5o8d/good_design_patterns_when_writing_forgiving/> (maxims for fault tolerance; the HTML-parser analogy).
 
-**Bearing on `fun`.** Open, and correctly open. `tickets/scope-enforester-improvements.md`
+**Bearing on `quill`.** Open, and correctly open. `tickets/scope-enforester-improvements.md`
 (status: open, re-derived 2026-10-01 against the C# port) measures the gap precisely: three
-message-only exception types, 173 `throw new` sites in `Fun.Expand` none carrying a span, spans
+message-only exception types, 173 `throw new` sites in `Quill.Expand` none carrying a span, spans
 existing on every token but discarded at `Driver.cs:38-46`, and **no workload counted** — the
 `.expect` format cannot express two errors from one program, so nobody knows how many cases die in
 enforestation rather than elaboration. The ticket's own verdict: the accumulator and recovery phase
@@ -743,11 +743,11 @@ and JavaScript/Babel are the mechanisms it points at.
 good language server?* — 66, 52 comments, 2022-03-01,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/t4c8ms/what_parsing_techniques_do_you_use_to_support_a/> (generating a TextMate grammar from a CF grammar is called an open research problem).
 
-**Bearing on `fun`.** Partially already, partly a decision nobody has taken. `fun`'s reader takes
+**Bearing on `quill`.** Partially already, partly a decision nobody has taken. `quill`'s reader takes
 one whole string and produces delimiter groups — so tooling must always run the reader, exactly the
 "you need a library" case. The fragment idea maps to something concrete: a bare expression is read
 with `?open_prelude` because "a bare expression has nowhere to write the open" (the
-`module-level-open-strict-imported-modules` decision) — i.e. `fun` already has an entry point for
+`module-level-open-strict-imported-modules` decision) — i.e. `quill` already has an entry point for
 fragments, and the conformance runner's `--file` mode uses it. Whether tooling must additionally
 survive *broken* input is the recovery question above, still open.
 
@@ -771,7 +771,7 @@ semicolons on statements but never on blocks.
 **Maturity.** `shipped` (Rust, Swift, Kotlin, Python expressions; C-family statements — both sides
 are production).
 
-**Tried by.** Rust, Swift, Kotlin, `fun`.
+**Tried by.** Rust, Swift, Kotlin, `quill`.
 
 **Source.** *Expressions vs. statements* — 53, 67 comments, 2026-09-05,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1w89alg/expressions_vs_statements/> (why even a statement-flavoured language's users can't tell the two apart: Perl's postfix `if`,
@@ -781,7 +781,7 @@ Python's ternary). *What are the advantages for an imperative language to not be
 semicolons after all statements, but not after blocks?* — 37, 46 comments, 2023-02-19,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1168rmc/why_do_clike_languages_require_semicolons_after/>.
 
-**Bearing on `fun`.** Already has it. A conformance case *is* an expression
+**Bearing on `quill`.** Already has it. A conformance case *is* an expression
 (`test/conformance/cases/README.md`), the trailing `;` before `}` discards a group's value
 (`surface-syntax-braces.md`), and there is no `return` in the reader's keyword table
 (`TokenTree.cs:45-51`) — see the last entry of this file.
@@ -805,7 +805,7 @@ eager evaluation of both branches and must fall back to a lazy primitive or to a
 Python — the corpus discusses all four in these terms); `speculative` for the operator
 decomposition, which the thread proposes without implementing.
 
-**Tried by.** Rust, Swift, Python (`x if c else y`), `fun`; nobody claimed for `:`/`?` as
+**Tried by.** Rust, Swift, Python (`x if c else y`), `quill`; nobody claimed for `:`/`?` as
 functions.
 
 **Source.** *Thinking about "the" ternary operator.* — 31, 74 comments, 2023-10-19,
@@ -813,7 +813,7 @@ functions.
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1w89alg/expressions_vs_statements/> (Python's `x if cond else y` is a conditional *expression*, not an `if` statement — the distinction the
 whole thread turns on).
 
-**Bearing on `fun`.** Already has it, and harder than most: there is no conditional token at all.
+**Bearing on `quill`.** Already has it, and harder than most: there is no conditional token at all.
 `Bool` and `if` are library features — `Bool` is a prelude nominal ADT and `if` expands to `match`
 (`topics/bool-and-if-as-library.md`, implemented), so `if (c) { t } else { e }` is an ordinary form
 whose head and `else` literal come from the prelude. The laziness cost above is therefore already
@@ -845,16 +845,16 @@ territory.
 **Maturity.** `shipped` (ML family, and Scala's `f[T]` is the square-bracket data point named in
 the thread).
 
-**Tried by.** OCaml, Haskell, Scala, `fun`.
+**Tried by.** OCaml, Haskell, Scala, `quill`.
 
 **Source.** *Generics syntax in different languages* — 58, 87 comments, 2022-03-20,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/tibrzi/generics_syntax_in_different_languages/>. *PL Syntax Going Forward* — 45, 39 comments, 2020-08-14,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/i9uuzo/pl_syntax_going_forward/> (the observation that brackets are being dropped at call sites rather than replaced).
 
-**Bearing on `fun`.** Already has it, decided: one grammar for types, so `Vec(n)` and
+**Bearing on `quill`.** Already has it, decided: one grammar for types, so `Vec(n)` and
 `(n : I64) -> Vec(n)` are read by the same rules as term application
 (`tickets/brackets-decide-grouping.md`'s worked example). The consequence worth naming: a
-type-position error can only be raised by the elaborator, which fits `fun`'s split (the reader
+type-position error can only be raised by the elaborator, which fits `quill`'s split (the reader
 decides no forms, resolves no names) but means reader diagnostics stay purely structural.
 
 ### Types decide grouping: adjacency as an operator, and type-directed disambiguation
@@ -893,12 +893,12 @@ implementation offered.
 <https://www.reddit.com/r/ProgrammingLanguages/comments/7rtx2z/integrating_type_system_inside_parser/> (the speculative version, asked as a question, with its author raising the confusion objection
 himself).
 
-**Bearing on `fun`.** Rejected by the project's split, not by opinion — and the split is the
-reason worth writing down: `Fun.Expand` cannot reference `Fun.Compiler`, so no grouping decision
-during enforestation may consult a type. That is consistent with what `fun` already allows
+**Bearing on `quill`.** Rejected by the project's split, not by opinion — and the split is the
+reason worth writing down: `Quill.Expand` cannot reference `Quill.Compiler`, so no grouping decision
+during enforestation may consult a type. That is consistent with what `quill` already allows
 type-aware macros, whose *output* is expanded syntactically while only their annotation is
 type-aware (`CONTEXT.md`, Macro annotation) — deferring to the elaborator buys annotation, never
-extent. Note the interaction with "one grammar for types": `fun` can afford `Vec(n)` reading like
+extent. Note the interaction with "one grammar for types": `quill` can afford `Vec(n)` reading like
 term application precisely *because* grouping is decided before any type is known. No ticket
 proposes type-directed grouping.
 
@@ -931,7 +931,7 @@ model (next entry).
 **Maturity.** `shipped` — Swift trailing closures, Kotlin trailing lambdas, JS arrow functions,
 Rust `|a| …`, all named in the two threads.
 
-**Tried by.** Swift, Kotlin, JavaScript, Rust, `fun`.
+**Tried by.** Swift, Kotlin, JavaScript, Rust, `quill`.
 
 **Source.** *Generalizing Ruby block syntax in static languages with currying* — 40, 13 comments,
 2021-02-19,
@@ -944,11 +944,11 @@ comments, 2020-09-08,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/ioon55/been_thinking_about_writing_a_custom_layer_over/>
 (comment evidence only: the AltGr keyboard cost above).
 
-**Bearing on `fun`.** Already has it, and the `fn` prefix is required by the same decision that
+**Bearing on `quill`.** Already has it, and the `fn` prefix is required by the same decision that
 gave braces: `tickets/surface-syntax-braces.md` — "A bare `{…}` is always a block," which is why
 `fn(x) -> e` became `fn(x) { e }` rather than `(x) { e }`, and why `if`/`match` heads are
 parenthesised so `c { … }` can never read as a record construction on `c`. The trailing-group form
-is what `fun` already writes: `if (c) { t } else { e }`, `choose (flag) { … } else { … }`, where the
+is what `quill` already writes: `if (c) { t } else { e }`, `choose (flag) { … } else { … }`, where the
 head is a prelude form and the groups are its arguments.
 
 ### Keyword-pair blocks (`do … end`) — the flavour decision that is still fog
@@ -967,14 +967,14 @@ cheaper to type than `{}` (see the brace entry above for the three comments).
 
 **Costs.** A keyword pair must be tracked by the reader as a stack (the corpus's own AEC example
 shows what happens when editors assume braces instead), it cannot be reflowed by tools that expect
-one delimiter, and `fun` has already paid the maintenance bill once: keyword-pair grouping was
+one delimiter, and `quill` has already paid the maintenance bill once: keyword-pair grouping was
 "reimplemented four times" in the prototype, "disagreeing on openers," before braces deleted all
 of it.
 
 **Maturity.** `contested` — shipped by Lua, Ruby, Elixir, Ada and Delphi [general knowledge, not
-from corpus], rejected outright by the Quartz thesis, and undecided inside `fun`.
+from corpus], rejected outright by the Quartz thesis, and undecided inside `quill`.
 
-**Tried by.** Lua, Ruby, Elixir; `fun` had it and removed it.
+**Tried by.** Lua, Ruby, Elixir; `quill` had it and removed it.
 
 **Source.** *Block Delimiters.* — 33, 39 comments, 2018-12-30,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/aayvws/block_delimiters/> (the indecision, and the audience-shape argument). *Thesis for the Quartz Programming Language* — 23,
@@ -982,14 +982,14 @@ from corpus], rejected outright by the Quartz thesis, and undecided inside `fun`
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1nvvmii/thesis_for_the_quartz_programming_language/> (the refusal: "I also refuse to believe that… the use of 'do,' 'then,' or 'end' keywords is an
 effective solution").
 
-**Bearing on `fun`.** This is a named fog item: *"Surface syntax after the macro model settles"* in
-`docs/wayfinder/fun-design-map.md` — whether broad syntax should become "possibly less ML-flavored,
+**Bearing on `quill`.** This is a named fog item: *"Surface syntax after the macro model settles"* in
+`docs/wayfinder/quill-design-map.md` — whether broad syntax should become "possibly less ML-flavored,
 Ruby/Elixir-style `do … end`" once the macro expansion model is finalised. Read against
 `tickets/surface-syntax-braces.md` (closed 2026-09-14) the two records pull in opposite
 directions: braces won the 2026-09-14 decision and deleted the keyword-pair helpers as four
 diverging implementations, while the fog item still holds the door open for word pairs at the
 level of the whole surface. Anyone re-opening this should start from that ticket's notes, which are
-the recorded cost of `do … end` in `fun`'s own history.
+the recorded cost of `do … end` in `quill`'s own history.
 
 ### Pipe-shaped chaining, with leading-dot segments
 
@@ -1024,10 +1024,10 @@ for arbitrary functions and values", with the ipython shell as the concrete irri
 <https://www.reddit.com/r/ProgrammingLanguages/comments/ya87l1/what_operators_do_you_wish_programming_languages/> (demand signal; the largest thread on this axis). *An idea for a `.=` operator* — 81, 83 comments,
 2021-12-21, <https://www.reddit.com/r/ProgrammingLanguages/comments/rleiot/an_idea_for_a_operator/>.
 
-**Bearing on `fun`.** Genuinely new — no pipe operator exists (`grep '|>'` over `src/Fun.Expand`
+**Bearing on `quill`.** Genuinely new — no pipe operator exists (`grep '|>'` over `src/Quill.Expand`
 and `std/` finds nothing) and no ticket proposes one. It would be cheap *and* well-behaved: a pipe
 is just an operator in a group (`infix (|>) additive`-style, related to whatever it must not
-swallow), and `fun`'s order-group rule means the pipe's interaction with every other operator has
+swallow), and `quill`'s order-group rule means the pipe's interaction with every other operator has
 to be declared rather than guessed. It belongs with the fog item on library-vs-compiler machinery:
 nothing about it needs compiler support.
 
@@ -1056,9 +1056,9 @@ precedence rules with a warning.
 <https://www.reddit.com/r/Compilers/comments/1ews70w/what_underrated_feature_do_you_wish_you_would_see/> (the nomination, the examples, and the bug list). *An idea for a `.=` operator* — 81, 83 comments,
 2021-12-21, <https://www.reddit.com/r/ProgrammingLanguages/comments/rleiot/an_idea_for_a_operator/> (assumes UFCS as its premise).
 
-**Bearing on `fun`.** Open, and named: the fog item *Library-level features vs compiler machinery*
+**Bearing on `quill`.** Open, and named: the fog item *Library-level features vs compiler machinery*
 lists UFCS with FFI as "desirable but should not drive the prototype agenda now." The seam is
-decided — `Fun.Expand` cannot reference `Fun.Compiler` — so any UFCS form must resolve during
+decided — `Quill.Expand` cannot reference `Quill.Compiler` — so any UFCS form must resolve during
 enforestation against bindings only, with the type-directed half left to whatever a template can
 ask of the elaborator. That constraint is not recorded anywhere as a design note; it falls out of
 the project split and would be the first thing an implementer hits.
@@ -1090,7 +1090,7 @@ bang — all named in the thread); `speculative` for the unrestricted postfix `!
 28, 20 comments, 2024-10-12,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1g27n6f/expressionlevel_donotation_keep_it_for_monads_or/>.
 
-**Bearing on `fun`.** Has it differently, and the difference is decided: `fun` has algebraic
+**Bearing on `quill`.** Has it differently, and the difference is decided: `quill` has algebraic
 effects with deep one-shot handlers, so the flattening is already the language's ordinary control
 flow — `perform Log.write(7)` continues under whatever handler encloses it, and no marker is
 written. What is genuinely open is the *notation* half: a template can give any
@@ -1124,7 +1124,7 @@ rules — "Lisp has infinite syntax," so uniformity at the outside buys less tha
 **Maturity.** (a) `shipped` (Scheme `syntax-rules`, Rust `macro_rules` — named in the Metamath C
 post as its model); (b) `speculative` (one hobby implementation, no paper).
 
-**Tried by.** Scheme, Rust, Metamath C (`for` over `while`), `fun` (`if`, `&&`, `type` all prelude
+**Tried by.** Scheme, Rust, Metamath C (`for` over `while`), `quill` (`if`, `&&`, `type` all prelude
 forms); Spine for the growing grammar. The comments add named prior art for (a): Nemerle's syntax
 extensions, which reach the token stream the lexer produced; Raku's *slangs*, which alter a module's
 syntax and semantics both, with one commenter noting a 30-line module adding an `actor` keyword
@@ -1148,12 +1148,12 @@ and *Are myths about the power of LISP exaggerated?* — 91, 100 comments, 2023-
 <https://www.reddit.com/r/ProgrammingLanguages/comments/158iyza/are_myths_about_the_power_of_lisp_exaggerated/>
 (comment evidence only: Nemerle, Raku slangs, Coalton, Generalized macros).
 
-**Bearing on `fun`.** (a) already has it, by design — Stage 11 demotes `if` and `&&` to prelude
+**Bearing on `quill`.** (a) already has it, by design — Stage 11 demotes `if` and `&&` to prelude
 forms, `type` is a stage-2 std macro, and any new keyword arrives the same way; that is what the
 umbrella ticket `specify-stage-11-macro-powered-language-features.md` is for. (b) is explicitly
-*not* `fun`'s shape, and the glossary draws the line: the reader "decides no forms and resolves no
+*not* `quill`'s shape, and the glossary draws the line: the reader "decides no forms and resolves no
 names." Extension lives in enforestation — interleaved with expansion, sensitive to bindings — never
-in the reader, so a `fun` file's tokenisation cannot depend on the program in it. That is a
+in the reader, so a `quill` file's tokenisation cannot depend on the program in it. That is a
 deliberate constraint on how far (a) can go: a template can add notation, not add tokens.
 
 ### The tooling bill for extensible notation
@@ -1193,10 +1193,10 @@ interpreters, where's the practical use case for LISP-style metaprogramming?* �
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1veo0it/between_more_constrained_local_metaprogramming/>. *Is CF what's actually useful?* — 17, 34 comments, 2021-05-13,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/nbi3xh/is_cf_whats_actually_useful/> (the fragment-production answer: give tools one entry point for partial input).
 
-**Bearing on `fun`.** This is the sharpest reason `fun` decided what it decided, and the decision
+**Bearing on `quill`.** This is the sharpest reason `quill` decided what it decided, and the decision
 already mitigates most of the bill. Grouping is decided by the reader's delimiter groups *before any
 macro runs* ("brackets decide grouping… the reader's tree decides extents before any macro
-expands"), so a tool can lay out a `fun` file's structure without running a single template —
+expands"), so a tool can lay out a `quill` file's structure without running a single template —
 what it cannot do is know what a head *means*. The residual cost is measured and open:
 `scope-enforester-improvements.md` records that expansion errors carry no span at all (three
 message-only exception types, `Driver.cs:38-46` discards the ones that exist upstream), so even
@@ -1229,7 +1229,7 @@ already names the combination people want and cannot find: static typing first, 
 **Maturity.** `shipped` (Common Lisp, Scheme, Smalltalk — the threads treat these as the examples);
 the *statically typed, interactive, fast* combination is `contested`.
 
-**Tried by.** Common Lisp, Scheme, Clojure, Smalltalk; `fun` has no REPL at all.
+**Tried by.** Common Lisp, Scheme, Clojure, Smalltalk; `quill` has no REPL at all.
 
 **Source.** *Why don't more languages implement LISP-style interactive REPLs?* — 74, 92 comments,
 2023-02-05,
@@ -1240,7 +1240,7 @@ dynamically-typed language?* — 90, 148 comments, 2021-12-02,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/r6nq30/what_is_it_like_to_write_a_large_project_in_a/>
 (comment evidence only: the edit-while-running test above).
 
-**Bearing on `fun`.** Open, and named twice. There is no REPL: `src/Fun.Cli` is a stub that prints
+**Bearing on `quill`.** Open, and named twice. There is no REPL: `src/Quill.Cli` is a stub that prints
 "the .NET port has no entry point yet" and exits 1, and the only way to run a program is the
 conformance runner's `--file` mode. What unblocks it is the other named fog item — *First-class
 compiler API*: "a tool, an LSP, a REPL and a macro all sit on one surface instead of
@@ -1269,17 +1269,17 @@ A reader used to scanning for `return` must instead follow the value or the effe
 **Maturity.** `shipped` on the expression side (Rust, Kotlin, Python all named in the corpus);
 `shipped` for effect-shaped exits where handlers exist.
 
-**Tried by.** Kotlin (labelled `return`, the one the thread credits), Rust, `fun`.
+**Tried by.** Kotlin (labelled `return`, the one the thread credits), Rust, `quill`.
 
 **Source.** *Had an idea for ".." syntax to delay the end of a scope. Thoughts?* — 42, 63 comments,
 2025-01-03,
 <https://www.reddit.com/r/ProgrammingLanguages/comments/1hse19g/had_an_idea_for_syntax_to_delay_the_end_of_a/> (the case against early exit, with the `else`-cascade rewrite showing what replacing it costs).
 
-**Bearing on `fun`.** Already has it, structurally: there is no `return` in the reader's keyword
+**Bearing on `quill`.** Already has it, structurally: there is no `return` in the reader's keyword
 table (`TokenTree.cs:45-51`), every case in the suite is an expression, and the general mechanism
 for "leave now" is the effect system — `perform` under a deep one-shot handler, with
 `HandledEffectEscapes` marking the failure mode. What the corpus thread wishes for — that user
-functions could control flow like built-ins — is exactly what `fun` gets from making control
+functions could control flow like built-ins — is exactly what `quill` gets from making control
 effects library-visible. No ticket proposes adding `return`.
 
 ## Threads worth reading in full
@@ -1294,7 +1294,7 @@ effects library-visible. No ticket proposes adding `return`.
 - *[Preprint] Pika parsing* (106/56) — the one parsing paper to argue its case on Reddit; the
   abstract alone states both problems and the claimed fix.
 - *Thesis for the Quartz Programming Language* (23/55) — one person's coherent refusal of colons,
-  arrows and `do … end` at once; a good mirror for whatever `fun` decides about flavour.
+  arrows and `do … end` at once; a good mirror for whatever `quill` decides about flavour.
 - *Had an idea for ".." syntax to delay the end of a scope* (42/63) — the best available argument
   against early-exit syntax, made by someone who tried to replace it.
 - *Between more constrained, local metaprogramming approaches and full-blown DSL interpreters* (32/29)
@@ -1335,24 +1335,24 @@ syntax (nothing). Treat those as untouched, not as absent.
 
 - *Whitespace and layout.* Five corpus threads mention significant whitespace against 84 on
   precedence and 61 on separators — this is a topic the field has largely stopped arguing, which is
-  either because it is settled or because nobody wants to reopen it. Deciding it for `fun` needs a
+  either because it is settled or because nobody wants to reopen it. Deciding it for `quill` needs a
   prototype and a re-indentation test, not more threads.
-- *Recovery workload.* The field agrees error recovery is desirable; `fun`'s open ticket is the only
+- *Recovery workload.* The field agrees error recovery is desirable; `quill`'s open ticket is the only
   source here that asks how often it would fire, and it has not been measured. The probe is written
   down in the ticket (run every `error` case and tally which layer refused).
 - *Extensible notation vs tooling.* The sceptic's case now has an answer in comments — an
   architectural defence (macros take and return data the compiler understands; the macro should be
-  a thin layer over a `call-with` function) — but neither side measured a tool, and `fun`'s own
+  a thin layer over a `call-with` function) — but neither side measured a tool, and `quill`'s own
   counter-evidence, grouping decided before any expansion runs, should be tested against a real
   external tool before it counts as an answer.
-- *`do … end` vs braces.* `fun`'s own two documents disagree in direction: the closed
+- *`do … end` vs braces.* `quill`'s own two documents disagree in direction: the closed
   `surface-syntax-braces` ticket deleted keyword-pair grouping as a four-times-reimplemented
   liability, while the fog item keeps Ruby/Elixir flavour open until the macro model settles. A
   human decision, not a research question.
 
 **What you would need to read beyond this corpus:** the Pika paper itself (arXiv:2005.06444, linked
 in its thread) for the recovery claims; Manifold's own documentation for binding expressions as
-shipped rather than described; Rhombus's `enforest/main.rkt` — cited by `fun`'s own ticket — for
+shipped rather than described; Rhombus's `enforest/main.rkt` — cited by `quill`'s own ticket — for
 undeclared-order errors and hole extents; and any production implementation of relative precedence
 groups, of which this corpus shows none.
 

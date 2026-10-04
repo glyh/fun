@@ -1,6 +1,6 @@
 ---
 title: The closed-term rule does not look inside closures
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

@@ -14,9 +14,9 @@ blocked_by:
 >
 > Enumerated with:
 > `grep -rn "NotImplementedException" src --include=*.cs` → **11 sites**, down from
-> **62** (2026-09-20) and **14** (2026-09-25). Per project: `Fun.Kernel` 3,
-> `Fun.Expand` 2, `Fun.Compiler` 6. `grep -rn "not ported yet"` also finds **one doc
-> comment** (`Fun.Compiler/Elaborator.Generalise.cs:44`) — 12 lines / 11 throws /
+> **62** (2026-09-20) and **14** (2026-09-25). Per project: `Quill.Kernel` 3,
+> `Quill.Expand` 2, `Quill.Compiler` 6. `grep -rn "not ported yet"` also finds **one doc
+> comment** (`Quill.Compiler/Elaborator.Generalise.cs:44`) — 12 lines / 11 throws /
 > 10 distinct messages. `TODO`: **0**. `throw new FunException`: **122**, which is now the
 > *converted* form the parity verdicts asked for, not a marker; a sample scan found no
 > unported placeholder among them. `InvalidOperationException` with an
@@ -38,17 +38,17 @@ blocked_by:
 >
 > | # | site | verdict | evidence |
 > |---|---|---|---|
-> | 1 | `Fun.Kernel/Core.Shift.cs:94` | U | the switch handles all **40** `Term` variants (enumerated) |
-> | 2 | `Fun.Kernel/Core.Shift.cs:143` | U | all **3** `BindingTerm` variants (`Open`/`Let`/`Impl`) |
-> | 3 | `Fun.Kernel/Core.Patterns.cs:57` | U | all **11** `CorePattern` variants |
-> | 4 | `Fun.Expand/Expander.Macros.cs:306` | deferred | typed operator macro; ruled 2026-09-24 not-a-gap (prototype hangs) |
-> | 5 | `Fun.Expand/Enforest.Roles.cs:871` | U | all **8** forms `DoStatement` can return; `quote-block-effect/trait/impl` cases exist |
-> | 6 | `Fun.Compiler/Unify.cs:221` | U | all **6** `Frame` variants |
-> | 7 | **`Fun.Compiler/Reflection.cs:245`** | **real gap, reachable — NEW** | see below; probe `p_syn_supply_macro` |
-> | 8 | `Fun.Compiler/Elaborator.cs:325` | U | every `Syntax` form that survives expansion is handled; `Stx` is an explicit `FunException` |
-> | 9 | `Fun.Compiler/Elaborator.RecTypes.cs:63` | unprobed residue | `CompletePending` guards prediction-by-name; no reaching program in 16+ probes |
-> | 10 | `Fun.Compiler/Elaborator.Patterns.cs:347` | U (residual) | probed: the old reaching program answers `1`; no reaching program found |
-> | 11 | `Fun.Compiler/Elaborator.Generative.cs:114` | U | the declaration-time unused-parameter check leaves no unlabelled generative nominal |
+> | 1 | `Quill.Kernel/Core.Shift.cs:94` | U | the switch handles all **40** `Term` variants (enumerated) |
+> | 2 | `Quill.Kernel/Core.Shift.cs:143` | U | all **3** `BindingTerm` variants (`Open`/`Let`/`Impl`) |
+> | 3 | `Quill.Kernel/Core.Patterns.cs:57` | U | all **11** `CorePattern` variants |
+> | 4 | `Quill.Expand/Expander.Macros.cs:306` | deferred | typed operator macro; ruled 2026-09-24 not-a-gap (prototype hangs) |
+> | 5 | `Quill.Expand/Enforest.Roles.cs:871` | U | all **8** forms `DoStatement` can return; `quote-block-effect/trait/impl` cases exist |
+> | 6 | `Quill.Compiler/Unify.cs:221` | U | all **6** `Frame` variants |
+> | 7 | **`Quill.Compiler/Reflection.cs:245`** | **real gap, reachable — NEW** | see below; probe `p_syn_supply_macro` |
+> | 8 | `Quill.Compiler/Elaborator.cs:325` | U | every `Syntax` form that survives expansion is handled; `Stx` is an explicit `FunException` |
+> | 9 | `Quill.Compiler/Elaborator.RecTypes.cs:63` | unprobed residue | `CompletePending` guards prediction-by-name; no reaching program in 16+ probes |
+> | 10 | `Quill.Compiler/Elaborator.Patterns.cs:347` | U (residual) | probed: the old reaching program answers `1`; no reaching program found |
+> | 11 | `Quill.Compiler/Elaborator.Generative.cs:114` | U | the declaration-time unused-parameter check leaves no unlabelled generative nominal |
 >
 > ### The one real gap (new since the last audit)
 >
@@ -57,7 +57,7 @@ blocked_by:
 > in that table. A macro whose output **reflects** a pattern-synonym use that supplies its
 > type arguments is refused:
 >
-> ```fun
+> ```quill
 > { M = module { pub pattern Two(a, b) = (a, b) };
 >   macro use(x) { x };
 >   use(match ((1, True)) { M.Two[I64, Bool](p, q) => p }) }
@@ -161,7 +161,7 @@ Step 3 of [port-parity-plan](port-parity-plan.md). **This is an audit — it wri
 feature code.** Its deliverable is this file: one verdict per site, so the invisible
 delta becomes a number and the real gaps become tickets.
 
-`dotnet/test/Fun.Conformance/Program.cs` counts a `NotImplementedException` as a
+`dotnet/test/Quill.Conformance/Program.cs` counts a `NotImplementedException` as a
 failure *only when a case reaches it*. So a `not ported yet` path that no shared case
 exercises is a silent hole in "the port is complete". There are **60
 `NotImplementedException` sites in 25 files** under `dotnet/src` (58 of them spelled
@@ -224,67 +224,67 @@ Legend: **RG** real gap · **P** parity (→ `FunException`) · **U** unreachabl
 
 | # | Site | Verdict | Prototype reference / note |
 |---|---|---|---|
-| 1 | `Fun.Kernel/Syntax.Map.cs:174` | **U** | all 43 `Syntax` variants are handled; the catch-all is dead until a variant is added |
-| 2 | `Fun.Kernel/Syntax.Map.cs:225` | **U** | all 15 `Binding` variants handled |
-| 3 | `Fun.Kernel/Syntax.Map.cs:256` | **U** | all 10 `Pattern` variants handled |
-| 4 | `Fun.Kernel/Core.Shift.cs:67` | **RG** | `map_subterms` (`core.ml:618`) walks every kind; this switch misses `Tunnel`, `RecursiveOccurrence`, `RecordConstruct`, `Sig`, `TraitRef`, `TraitDictTy` — see G2 |
-| 5 | `Fun.Kernel/Core.Shift.cs:107` (`MapBindings`) | **RG** | prototype's `bindings` helper handles `ImplBind`; C# handles only `Let`/`Open` — `BindingTerm.Impl` (`Core.Traits.cs:54`) is unwalked — see G2 |
-| 6 | `Fun.Expand/Expander.cs:212` | **U** | all 43 `Syntax` forms handled (verified by case list) |
-| 7 | `Fun.Expand/Expander.cs:357` | **U** | all 15 `Binding` forms handled (`Trait`/`Impl` at `:331`) |
-| 8 | `Fun.Expand/Expander.Macros.cs:306` | **RG** | prototype's `syntax_operator_arg` handles a typed operator macro; no program constructed — see G4 |
-| 9 | `Fun.Expand/Enforest.cs:220` | **P** | `enforest.ml:1445` `unsupported "unsupported module item"` |
-| 10 | `Fun.Expand/Enforest.cs:291` | **P** | `enforest.ml:514` `unsupported "unsupported Phase 7A keyword"` (plus the `do`/`let` errors at `:456`,`:471`) |
-| 11 | `Fun.Expand/Enforest.cs:387` | **RG** | `f{e}` is an implicit argument: `enforest.ml:632-644` — see G1 |
-| 12 | `Fun.Expand/Enforest.cs:396` | **P** | `enforest_util.ml:342` `unsupported "unconsumed terms after expression: <+>"` |
-| 13 | `Fun.Expand/Enforest.cs:412` | **P** | established: `enforest.ml:87` "not in Phase 7A" |
-| 14 | `Fun.Expand/Enforest.Traits.cs:143` | **P** | `enforest.ml:407` `error "an impl in a signature must be named"` |
-| 15 | `Fun.Expand/Enforest.Roles.cs:148` | **P** | `enforest.ml:684` `error "not an infix operator: ~>"`; note the throw precedes the `continues` guard, so `1 + 2 ~> 3` throws where the prototype parses `(1+2) ~> 3` and type-errors (probe P5) |
-| 16 | `Fun.Expand/Enforest.Roles.cs:338` (`:343`) | **G** | **corrected 2026-09-20: a real gap, not parity.** The prototype resolves a dotted path of depth > 1 through a module member (`{ W = import "wrapper"; infix (@@) W.M.g ($x, $y) { $x }; 1 @@ 2 }` → `1`; verified by the integrator) → [an order group named through a unit member's path](port-order-group-through-unit-path.md). `brackets-decide-grouping`'s open "dotted group references" item is a narrower, different case |
-| 17 | `Fun.Expand/Enforest.Roles.cs:845` (`WithBody`) | **?** | a quoted-syntax block statement other than `let`/`rec`/`open`/`syntax`/`macro`; no program constructed |
-| 18 | `Fun.Compiler/Unify.cs:199` | **U** | heads are exactly `HVar`/`HMeta`/`HPrim` |
-| 19 | `Fun.Compiler/Unify.cs:204` | **RG** | residue: renaming `FDot`/`FRefGet`/`FRefSet`/`FMatch` frames; `elab-059` |
-| 20 | `Fun.Compiler/Unify.cs:206` | **?** | `Rename` misses `VCont`/`VGlued`/`VModule`/`VStruct`(bindings)/`VTrait`/`VTraitDict`/`VSig`/`VRecord`/`VFix`; which can appear in a meta solution needs a ruling |
-| 21 | `Fun.Compiler/Unify.Neutrals.cs:35` | **U** | every `Frame` kind is handled; the default is a lying catch-all |
-| 22 | `Fun.Compiler/Reflection.cs:177` | **U** | a pattern head is `Var` or `OpenChoice` by grammar |
-| 23 | `Fun.Compiler/Reflection.cs:282` | **U** | every `Syntax` form but `PatternSynonym`, which is reflected through `Binding.Let` (`:375`) |
-| 24 | `Fun.Compiler/Reflection.cs:372` | **U** | all 10 `Pattern` variants handled |
-| 25 | `Fun.Compiler/Reflection.cs:399` | **U** | all 15 `Binding` variants handled |
-| 26 | `Fun.Compiler/Reflection.cs:603` | **RG** | prototype reads `UnitTok` (`macro_eval.ml:494`); a macro returning one is refused — see G3 |
-| 27 | `Fun.Compiler/Reflection.cs:718`,`:922` | **RG** | prototype reads any number of trait params (`macro_eval.ml:603`,`:893`); the C# `TraitDef`/`Trait` models hardcode one — see G3 |
-| 28 | `Fun.Compiler/Reflection.cs:726`,`:928` | **RG** | prototype reads any number of impl args (`macro_eval.ml:610`,`:898`) — see G3 |
-| 29 | `Fun.Compiler/Reflection.cs:762` | **RG** | prototype reads `RawTypeDef` (`macro_eval.ml:593`); the ADT still has it (`std/stage1.fun:32`) — see G3 |
-| 30 | `Fun.Compiler/Reflection.cs:850` | **RG** | prototype reads a param's bound paths (`macro_eval.ml`, `u_param`); a macro output with `[A : Trait]` is refused — see G3 |
-| 31 | `Fun.Compiler/Nbe.cs:197` | **U** | all 39 `Term` variants handled |
-| 32 | `Fun.Compiler/Nbe.cs:561` | **?** | all `Value` kinds handled but `VCont`; whether a continuation is read back as a term needs a ruling |
-| 33 | `Fun.Compiler/Nbe.StuckMatch.cs:50` | **RG** | `ArmBinders` misses `CorePattern.SynonymParam`; the prototype's `pat_binder_count` handles it — see G2 |
-| 34 | `Fun.Compiler/Nbe.StuckMatch.cs:54` | **U** | `InTree` returns non-null for every arm of a checked match |
-| 35 | `Fun.Compiler/Nbe.Match.cs:87` | **?** | a known scrutinee with an unknown *part*: the prototype takes the decision tree's `default` (`nbe.ml:860-877`), the C# throws. See `ponytail:` at `Nbe.StuckMatch.cs:12` |
-| 36 | `Fun.Compiler/Nbe.Effects.cs:106` | **RG** | residue: `core-102` |
-| 37 | `Fun.Compiler/Elaborator.cs:304` | **?** | `Infer` has no case for `ProdTy`/`Stx`/`Block`/`Instantiate`/`MacroDef`/`OperatorUse`/`SyntaxDef`/`Elaborated`; most are consumed by the expander, but `Syntax.Stx` is deliberately left for the elaborator (`Expander.cs:209`). Needs a per-form ruling |
-| 38 | `Fun.Compiler/Elaborator.cs:442` | **U** | after expansion a binding is only `Let`/`Open`/`Export`/`RecGroup`/`Effect`/`Trait`/`Impl` |
-| 39 | `Fun.Compiler/Elaborator.cs:506` | **P** | `elab_resolve.ml:387` `raise (ElabError NotAModule)`; probe R2 |
-| 40 | `Fun.Compiler/Elaborator.Export.cs:52` | **P** | `elab_infer.ml:150` `raise (ElabError NotAModule)` |
-| 41 | `Fun.Compiler/Elaborator.Implicits.cs:50` | **RG** | prototype builds a meta `Pi` and unifies (`elab_apply.ml:158-175`) — see G1 |
-| 42 | `Fun.Compiler/Elaborator.Imports.cs:16` | **U** | `Driver.Elaborate` always supplies a `Loader` |
-| 43 | `Fun.Compiler/Elaborator.Macros.cs:25` | **U** | driver always supplies an `Expander` |
-| 44 | `Fun.Compiler/Elaborator.Macros.cs:26` | **U** | driver always supplies a `Loader` |
-| 45 | `Fun.Compiler/Elaborator.Generative.cs:52` | **?** | a generative nominal not bound as a module member; the prototype's `check_generative_escape` (`elab_effects.ml:298`) refuses the escape instead, so the two refuse different things |
-| 46 | `Fun.Compiler/Elaborator.Patterns.cs:47` | **P** | `elab_patterns.ml:187` `raise (ElabError ApplyingNonFunction)` |
-| 47 | `Fun.Compiler/Elaborator.Patterns.cs:72` | **?** | a synonym RHS that is not a constructor pattern; prototype accepts the *definition* (`elab_infer.ml:490`), probe Q2 (module form) → `ElabError(TupleLengthMismatch)` at use. The block form fails in the prototype for an unrelated, listed reason ([pattern-synonym-not-a-block-declaration](pattern-synonym-not-a-block-declaration.md)). Needs a ruling |
-| 48 | `Fun.Compiler/Elaborator.Patterns.cs:76` | **?** | a synonym over a type-case pattern; prototype handles type-case patterns generally |
-| 49 | `Fun.Compiler/Elaborator.Patterns.cs:88` | **?** | a synonym whose parameter types are not fixed |
-| 50 | `Fun.Compiler/Elaborator.Patterns.cs:200` | **OWNED** | being fixed by [port-nominal-identity](port-nominal-identity.md) |
-| 51 | `Fun.Compiler/Elaborator.RecTypes.cs:62` | **RG** | a recursive enum whose payload captures a variable its body does not name; the prototype predicts captures by evaluation — see G5 |
-| 52 | `Fun.Compiler/Elaborator.Structs.cs:80` | **P** | `enforest.ml:1509` `unsupported "unsupported struct item"` |
-| 53 | `Fun.Compiler/Elaborator.Structs.cs:209` | **P** | `elab_infer.ml:936` `raise (ElabError ApplyingNonFunction)` |
-| 54 | `Fun.Compiler/Elaborator.Structs.cs:244` | **P** | `elab_type_expr.ml:74` `raise (ElabError ApplyingNonFunction)` |
-| 55 | `Fun.Compiler/Elaborator.Structs.cs:290` | **OWNED** | being fixed by [port-stage2-residue](port-stage2-residue.md) (4 cases) |
-| 56 | `Fun.Compiler/Elaborator.Enum.cs:295` | **RG** | free *names* a `Syntax` uses; the traversal misses `Sig`/`Struct`/`TraitDef`/`ImplDef`/`MacroCall`/`Quote`/… — see G2 |
-| 57 | `Fun.Compiler/Elaborator.Enum.cs:314` | **RG** | same, over a `Binding` — see G2 |
-| 58 | `Fun.Compiler/Elaborator.Enum.cs:352` | **RG** | free *levels* a `Value` mentions; misses `VEffect`/`VModule`/`VSig`/`VTrait`/`VStruct`/… — see G2 |
-| 59 | `Fun.Compiler/Elaborator.Match.cs:93` | **OWNED** | constructor pattern head of a non-nominal (`elab-067`), fixed by [port-stage2-residue](port-stage2-residue.md) |
-| 60 | `Fun.Compiler/Elaborator.Match.cs:161` | **OWNED** | same site, other branch |
-| 61 | `Fun.Compiler/Elaborator.Macros.cs`/`Elaborator.cs` others | — | no further `NotImplementedException` found on reading |
+| 1 | `Quill.Kernel/Syntax.Map.cs:174` | **U** | all 43 `Syntax` variants are handled; the catch-all is dead until a variant is added |
+| 2 | `Quill.Kernel/Syntax.Map.cs:225` | **U** | all 15 `Binding` variants handled |
+| 3 | `Quill.Kernel/Syntax.Map.cs:256` | **U** | all 10 `Pattern` variants handled |
+| 4 | `Quill.Kernel/Core.Shift.cs:67` | **RG** | `map_subterms` (`core.ml:618`) walks every kind; this switch misses `Tunnel`, `RecursiveOccurrence`, `RecordConstruct`, `Sig`, `TraitRef`, `TraitDictTy` — see G2 |
+| 5 | `Quill.Kernel/Core.Shift.cs:107` (`MapBindings`) | **RG** | prototype's `bindings` helper handles `ImplBind`; C# handles only `Let`/`Open` — `BindingTerm.Impl` (`Core.Traits.cs:54`) is unwalked — see G2 |
+| 6 | `Quill.Expand/Expander.cs:212` | **U** | all 43 `Syntax` forms handled (verified by case list) |
+| 7 | `Quill.Expand/Expander.cs:357` | **U** | all 15 `Binding` forms handled (`Trait`/`Impl` at `:331`) |
+| 8 | `Quill.Expand/Expander.Macros.cs:306` | **RG** | prototype's `syntax_operator_arg` handles a typed operator macro; no program constructed — see G4 |
+| 9 | `Quill.Expand/Enforest.cs:220` | **P** | `enforest.ml:1445` `unsupported "unsupported module item"` |
+| 10 | `Quill.Expand/Enforest.cs:291` | **P** | `enforest.ml:514` `unsupported "unsupported Phase 7A keyword"` (plus the `do`/`let` errors at `:456`,`:471`) |
+| 11 | `Quill.Expand/Enforest.cs:387` | **RG** | `f{e}` is an implicit argument: `enforest.ml:632-644` — see G1 |
+| 12 | `Quill.Expand/Enforest.cs:396` | **P** | `enforest_util.ml:342` `unsupported "unconsumed terms after expression: <+>"` |
+| 13 | `Quill.Expand/Enforest.cs:412` | **P** | established: `enforest.ml:87` "not in Phase 7A" |
+| 14 | `Quill.Expand/Enforest.Traits.cs:143` | **P** | `enforest.ml:407` `error "an impl in a signature must be named"` |
+| 15 | `Quill.Expand/Enforest.Roles.cs:148` | **P** | `enforest.ml:684` `error "not an infix operator: ~>"`; note the throw precedes the `continues` guard, so `1 + 2 ~> 3` throws where the prototype parses `(1+2) ~> 3` and type-errors (probe P5) |
+| 16 | `Quill.Expand/Enforest.Roles.cs:338` (`:343`) | **G** | **corrected 2026-09-20: a real gap, not parity.** The prototype resolves a dotted path of depth > 1 through a module member (`{ W = import "wrapper"; infix (@@) W.M.g ($x, $y) { $x }; 1 @@ 2 }` → `1`; verified by the integrator) → [an order group named through a unit member's path](port-order-group-through-unit-path.md). `brackets-decide-grouping`'s open "dotted group references" item is a narrower, different case |
+| 17 | `Quill.Expand/Enforest.Roles.cs:845` (`WithBody`) | **?** | a quoted-syntax block statement other than `let`/`rec`/`open`/`syntax`/`macro`; no program constructed |
+| 18 | `Quill.Compiler/Unify.cs:199` | **U** | heads are exactly `HVar`/`HMeta`/`HPrim` |
+| 19 | `Quill.Compiler/Unify.cs:204` | **RG** | residue: renaming `FDot`/`FRefGet`/`FRefSet`/`FMatch` frames; `elab-059` |
+| 20 | `Quill.Compiler/Unify.cs:206` | **?** | `Rename` misses `VCont`/`VGlued`/`VModule`/`VStruct`(bindings)/`VTrait`/`VTraitDict`/`VSig`/`VRecord`/`VFix`; which can appear in a meta solution needs a ruling |
+| 21 | `Quill.Compiler/Unify.Neutrals.cs:35` | **U** | every `Frame` kind is handled; the default is a lying catch-all |
+| 22 | `Quill.Compiler/Reflection.cs:177` | **U** | a pattern head is `Var` or `OpenChoice` by grammar |
+| 23 | `Quill.Compiler/Reflection.cs:282` | **U** | every `Syntax` form but `PatternSynonym`, which is reflected through `Binding.Let` (`:375`) |
+| 24 | `Quill.Compiler/Reflection.cs:372` | **U** | all 10 `Pattern` variants handled |
+| 25 | `Quill.Compiler/Reflection.cs:399` | **U** | all 15 `Binding` variants handled |
+| 26 | `Quill.Compiler/Reflection.cs:603` | **RG** | prototype reads `UnitTok` (`macro_eval.ml:494`); a macro returning one is refused — see G3 |
+| 27 | `Quill.Compiler/Reflection.cs:718`,`:922` | **RG** | prototype reads any number of trait params (`macro_eval.ml:603`,`:893`); the C# `TraitDef`/`Trait` models hardcode one — see G3 |
+| 28 | `Quill.Compiler/Reflection.cs:726`,`:928` | **RG** | prototype reads any number of impl args (`macro_eval.ml:610`,`:898`) — see G3 |
+| 29 | `Quill.Compiler/Reflection.cs:762` | **RG** | prototype reads `RawTypeDef` (`macro_eval.ml:593`); the ADT still has it (`std/stage1.qll:32`) — see G3 |
+| 30 | `Quill.Compiler/Reflection.cs:850` | **RG** | prototype reads a param's bound paths (`macro_eval.ml`, `u_param`); a macro output with `[A : Trait]` is refused — see G3 |
+| 31 | `Quill.Compiler/Nbe.cs:197` | **U** | all 39 `Term` variants handled |
+| 32 | `Quill.Compiler/Nbe.cs:561` | **?** | all `Value` kinds handled but `VCont`; whether a continuation is read back as a term needs a ruling |
+| 33 | `Quill.Compiler/Nbe.StuckMatch.cs:50` | **RG** | `ArmBinders` misses `CorePattern.SynonymParam`; the prototype's `pat_binder_count` handles it — see G2 |
+| 34 | `Quill.Compiler/Nbe.StuckMatch.cs:54` | **U** | `InTree` returns non-null for every arm of a checked match |
+| 35 | `Quill.Compiler/Nbe.Match.cs:87` | **?** | a known scrutinee with an unknown *part*: the prototype takes the decision tree's `default` (`nbe.ml:860-877`), the C# throws. See `ponytail:` at `Nbe.StuckMatch.cs:12` |
+| 36 | `Quill.Compiler/Nbe.Effects.cs:106` | **RG** | residue: `core-102` |
+| 37 | `Quill.Compiler/Elaborator.cs:304` | **?** | `Infer` has no case for `ProdTy`/`Stx`/`Block`/`Instantiate`/`MacroDef`/`OperatorUse`/`SyntaxDef`/`Elaborated`; most are consumed by the expander, but `Syntax.Stx` is deliberately left for the elaborator (`Expander.cs:209`). Needs a per-form ruling |
+| 38 | `Quill.Compiler/Elaborator.cs:442` | **U** | after expansion a binding is only `Let`/`Open`/`Export`/`RecGroup`/`Effect`/`Trait`/`Impl` |
+| 39 | `Quill.Compiler/Elaborator.cs:506` | **P** | `elab_resolve.ml:387` `raise (ElabError NotAModule)`; probe R2 |
+| 40 | `Quill.Compiler/Elaborator.Export.cs:52` | **P** | `elab_infer.ml:150` `raise (ElabError NotAModule)` |
+| 41 | `Quill.Compiler/Elaborator.Implicits.cs:50` | **RG** | prototype builds a meta `Pi` and unifies (`elab_apply.ml:158-175`) — see G1 |
+| 42 | `Quill.Compiler/Elaborator.Imports.cs:16` | **U** | `Driver.Elaborate` always supplies a `Loader` |
+| 43 | `Quill.Compiler/Elaborator.Macros.cs:25` | **U** | driver always supplies an `Expander` |
+| 44 | `Quill.Compiler/Elaborator.Macros.cs:26` | **U** | driver always supplies a `Loader` |
+| 45 | `Quill.Compiler/Elaborator.Generative.cs:52` | **?** | a generative nominal not bound as a module member; the prototype's `check_generative_escape` (`elab_effects.ml:298`) refuses the escape instead, so the two refuse different things |
+| 46 | `Quill.Compiler/Elaborator.Patterns.cs:47` | **P** | `elab_patterns.ml:187` `raise (ElabError ApplyingNonFunction)` |
+| 47 | `Quill.Compiler/Elaborator.Patterns.cs:72` | **?** | a synonym RHS that is not a constructor pattern; prototype accepts the *definition* (`elab_infer.ml:490`), probe Q2 (module form) → `ElabError(TupleLengthMismatch)` at use. The block form fails in the prototype for an unrelated, listed reason ([pattern-synonym-not-a-block-declaration](pattern-synonym-not-a-block-declaration.md)). Needs a ruling |
+| 48 | `Quill.Compiler/Elaborator.Patterns.cs:76` | **?** | a synonym over a type-case pattern; prototype handles type-case patterns generally |
+| 49 | `Quill.Compiler/Elaborator.Patterns.cs:88` | **?** | a synonym whose parameter types are not fixed |
+| 50 | `Quill.Compiler/Elaborator.Patterns.cs:200` | **OWNED** | being fixed by [port-nominal-identity](port-nominal-identity.md) |
+| 51 | `Quill.Compiler/Elaborator.RecTypes.cs:62` | **RG** | a recursive enum whose payload captures a variable its body does not name; the prototype predicts captures by evaluation — see G5 |
+| 52 | `Quill.Compiler/Elaborator.Structs.cs:80` | **P** | `enforest.ml:1509` `unsupported "unsupported struct item"` |
+| 53 | `Quill.Compiler/Elaborator.Structs.cs:209` | **P** | `elab_infer.ml:936` `raise (ElabError ApplyingNonFunction)` |
+| 54 | `Quill.Compiler/Elaborator.Structs.cs:244` | **P** | `elab_type_expr.ml:74` `raise (ElabError ApplyingNonFunction)` |
+| 55 | `Quill.Compiler/Elaborator.Structs.cs:290` | **OWNED** | being fixed by [port-stage2-residue](port-stage2-residue.md) (4 cases) |
+| 56 | `Quill.Compiler/Elaborator.Enum.cs:295` | **RG** | free *names* a `Syntax` uses; the traversal misses `Sig`/`Struct`/`TraitDef`/`ImplDef`/`MacroCall`/`Quote`/… — see G2 |
+| 57 | `Quill.Compiler/Elaborator.Enum.cs:314` | **RG** | same, over a `Binding` — see G2 |
+| 58 | `Quill.Compiler/Elaborator.Enum.cs:352` | **RG** | free *levels* a `Value` mentions; misses `VEffect`/`VModule`/`VSig`/`VTrait`/`VStruct`/… — see G2 |
+| 59 | `Quill.Compiler/Elaborator.Match.cs:93` | **OWNED** | constructor pattern head of a non-nominal (`elab-067`), fixed by [port-stage2-residue](port-stage2-residue.md) |
+| 60 | `Quill.Compiler/Elaborator.Match.cs:161` | **OWNED** | same site, other branch |
+| 61 | `Quill.Compiler/Elaborator.Macros.cs`/`Elaborator.cs` others | — | no further `NotImplementedException` found on reading |
 
 ### The 15 `ponytail:` stopgaps
 
@@ -306,7 +306,7 @@ right? needs the user).
 | `Core.Rec.cs:34` (environment identity by reference) | shared choice (structural identity is the prototype's too) |
 | `Budget.cs:11` (limit is a constant) | shared choice (no surface syntax to raise it in either) |
 | `ScopeSet.cs:10` (`ImmutableSortedSet` vs sorted list) | shared choice (representation only) |
-| `Fun.Conformance/Program.cs:53` (timed-out run's thread keeps spinning) | divergence (port-only; the OCaml runner has no timeout) — cosmetic, runner-only |
+| `Quill.Conformance/Program.cs:53` (timed-out run's thread keeps spinning) | divergence (port-only; the OCaml runner has no timeout) — cosmetic, runner-only |
 
 ## Real gaps, in priority order
 
@@ -314,19 +314,19 @@ right? needs the user).
 
 The prototype handles two forms the port refuses; both came back with the value `1`.
 
-- `Fun.Expand/Enforest.cs:387` — `f{e}` written in braces is an implicit argument
+- `Quill.Expand/Enforest.cs:387` — `f{e}` written in braces is an implicit argument
   (`enforest.ml:632-644`).
-  ```fun
+  ```quill
   { f = fn[A : Type](x : A) { x }; f{I64}(1) }
   ```
   Prototype: `1`. Port: `not ported yet: an implicit argument written f{ e }`.
-- `Fun.Compiler/Elaborator.Implicits.cs:50` — applying `f[x]` to a value of unknown
+- `Quill.Compiler/Elaborator.Implicits.cs:50` — applying `f[x]` to a value of unknown
   function type; the prototype synthesises an implicit `Pi` and unifies
   (`elab_apply.ml:158-175`). This is the decided rule from
   [deref-of-unknown-type-is-not-a-reference](deref-of-unknown-type-is-not-a-reference.md)
   ("applying a value of unknown type unifies it with a fresh arrow"), so it is a
   real gap, not a parity candidate.
-  ```fun
+  ```quill
   { h = fn(g) { g[I64] }; 1 }
   ```
   Prototype: `1`. Port: `not ported yet: applying a value of unknown function type`.
@@ -346,7 +346,7 @@ readback). One ticket, "traversals must cover every form", is the right shape.
 ### G3. The reflection reader refuses forms the prototype reads (latent)
 
 A macro may return any constructor of the prelude's `Expr`/`Decl` ADTs
-(`std/stage1.fun:32`). `Reflection.cs` reads most of them but throws on: a reflected
+(`std/stage1.qll:32`). `Reflection.cs` reads most of them but throws on: a reflected
 unit token (`:603`), a trait with other than one parameter (`:718`/`:922`), an impl
 with other than one argument (`:726`/`:928`), `RawTypeDef` (`:762`), and a parameter
 with trait bounds (`:850`). The prototype reads all five (`macro_eval.ml:494`,
@@ -488,7 +488,7 @@ port is behaviour-complete without shape tests). Flagged for the user.
 The port is complete when it agrees with the prototype on every **source → result**
 case. The consequence, which is the whole of the ruling:
 
-- **Mirror the observable behaviour.** Add `dotnet/test/Fun.Tests/BudgetTests.cs`
+- **Mirror the observable behaviour.** Add `dotnet/test/Quill.Tests/BudgetTests.cs`
 for the three budget-accounting cases (`test/backend/test_core.ml:1399`, `:1412`,
 `:2048`): an overrun is a real user-visible error naming the macro and the site, so
 it is behaviour, not an internal. Note the shared suite cannot express it — the

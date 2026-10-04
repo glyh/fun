@@ -1,6 +1,6 @@
 ---
 title: Port core_tt to .NET (C#)
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: open
@@ -14,7 +14,7 @@ blocked_by:
 > they describe is **done**: parity measured (`port-fails: 0` over every program in the repo) and
 > the OCaml prototype deleted on 2026-09-25, then the `dotnet/` wrapper lifted to the repository
 > root on 2026-09-26. What remains under this umbrella is the follow-up list on the map's
-> [Frontier (2026-09-26)](../fun-design-map.md#frontier-2026-09-26), not a port. The decisions
+> [Frontier (2026-09-26)](../quill-design-map.md#frontier-2026-09-26), not a port. The decisions
 > below are the record of how it was built.
 
 ## Handover (2026-09-17) — start here
@@ -31,8 +31,8 @@ each step is in the waves below and in each `port-*.md` ticket's Resolution.
 
 **Verify first:**
 ```
-cd dotnet && dotnet build -v q --nologo && timeout 300 dotnet test test/Fun.Tests --nologo -v q \
-  && timeout 300 dotnet run --project test/Fun.Conformance --no-build | tail -1
+cd dotnet && dotnet build -v q --nologo && timeout 300 dotnet test test/Quill.Tests --nologo -v q \
+  && timeout 300 dotnet run --project test/Quill.Conformance --no-build | tail -1
 cd .. && dune test && dune test test/conformance
 ```
 
@@ -200,7 +200,7 @@ implementation defects the port redesigns rather than transliterates.
 - [formalized core semantics](../topics/formalized-semantics.md) — a Lean/Coq
   spec as an AI-checked structural-correspondence reference across the port.
   Depends on the same vocabulary the domain-model ticket produces.
-- [too many IR layers](../fun-design-map.md#fog) — `Syntax.t` and `Surface.t`
+- [too many IR layers](../quill-design-map.md#fog) — `Syntax.t` and `Surface.t`
   look near-isomorphic; whether one collapses is a port-design question.
 
 ## Resolution
@@ -226,7 +226,7 @@ recurse natively over syntax (its depth is program-text depth, not run-time dept
 
 ## Decided (2026-09-16): conformance suite plus C# unit tests
 
-- **Shared conformance suite** for language behaviour: each test is a `.fun`
+- **Shared conformance suite** for language behaviour: each test is a `.qll`
   program plus an expected result (`.expect`). Both implementations have a small
   runner; the port is complete when C# passes every file OCaml passes.
   **Built 2026-09-16** at `test/conformance/cases/<area>/` (repo convention is
@@ -234,7 +234,7 @@ recurse natively over syntax (its depth is program-text depth, not run-time dept
   `elaborate`, extracted from the Alcotest binaries. `<name>.expect` holds a
   value, a constructor name, `ok` (elaborates) or `error` (fails anywhere) —
   error wording is deliberately not pinned, since it is implementation-specific.
-  Extra units are `<name>.unit-<unit>.fun`. Run with `dune test test/conformance`;
+  Extra units are `<name>.unit-<unit>.qll`. Run with `dune test test/conformance`;
   format and conventions in `test/conformance/cases/README.md`. The OCaml runner
   is `test/conformance/run_conformance.ml` (~120 lines) — the C# port needs the
   same walk-and-compare.
@@ -253,18 +253,18 @@ recurse natively over syntax (its depth is program-text depth, not run-time dept
 The user gave the word; the port is under way in `dotnet/`, in the same repo as
 the prototype so the conformance suite stays one copy.
 
-**Layout — three projects** (`dotnet/Fun.slnx`), not seven and not one:
+**Layout — three projects** (`dotnet/Quill.slnx`), not seven and not one:
 
 ```
-src/Fun.Kernel/     Atom, ScopeSet, SourceSpan, TokenTree, Syntax, Core
-src/Fun.Expand/     reader, enforester, expander     -> Kernel only
-src/Fun.Compiler/   elaborator, unify, match, NbE, loader
-src/Fun.Cli/
-test/Fun.Tests/         xUnit, internals
-test/Fun.Conformance/   walks ../../test/conformance/cases
+src/Quill.Kernel/     Atom, ScopeSet, SourceSpan, TokenTree, Syntax, Core
+src/Quill.Expand/     reader, enforester, expander     -> Kernel only
+src/Quill.Compiler/   elaborator, unify, match, NbE, loader
+src/Quill.Cli/
+test/Quill.Tests/         xUnit, internals
+test/Quill.Conformance/   walks ../../test/conformance/cases
 ```
 
-The split enforces the one edge that is load-bearing: `Fun.Expand` cannot
+The split enforces the one edge that is load-bearing: `Quill.Expand` cannot
 reference the elaborator, exactly as `core_tt_expand` depends on only
 `core_tt_kernel` and `core_tt_syntax`. `match`, `interp` and `loader` are leaves
 off the kernel that only `typecheck` consumes, so they are folders, not projects.
@@ -277,15 +277,15 @@ expander that silently compiles no macro and leaves every macro call unexpanded
 (`core_loader.ml:26` comments on exactly that). The *recursion* they carry is
 real and stays: expanding a `MacroDef` must compile and evaluate the macro body
 before the next form is read, because that form may call it. What goes is the
-optionality. The port declares one `IMacroRuntime` in `Fun.Expand`, implemented
-in `Fun.Compiler`, taken non-nullable by the expander's constructor, so
+optionality. The port declares one `IMacroRuntime` in `Quill.Expand`, implemented
+in `Quill.Compiler`, taken non-nullable by the expander's constructor, so
 `MissingCallback` is unrepresentable. The genuinely runtime-free pass
 (`Parse_expand.syntax_exports`, which only reads a unit's exported roles) becomes
 its own entry point rather than an expander with nulls in it.
 
 **Decided (2026-09-16): porting order is a vertical slice.** Reader through
 evaluator for a handful of conformance cases first, accepting rework as each
-layer fills in, rather than finishing `Fun.Kernel` bottom-up with nothing
+layer fills in, rather than finishing `Quill.Kernel` bottom-up with nothing
 running until the end. The reason is the ticket's own risk list: the env-width
 contract and the scope-set invariants are what gets silently mis-transcribed,
 and only a running pipeline catches that early.
@@ -375,9 +375,9 @@ reasons are in the decisions above.
 
 ## Decided (2026-09-16): the prelude's source lives in `dotnet/std/`
 
-The prelude (`std`) is `.fun` source the OCaml prototype holds as string literals
+The prelude (`std`) is `.qll` source the OCaml prototype holds as string literals
 in `lib/semantic/typecheck/elab_prelude.ml`. The port keeps it as real files,
-`dotnet/std/stage1.fun` and `dotnet/std/stage2.fun`, copied verbatim (user
+`dotnet/std/stage1.qll` and `dotnet/std/stage2.qll`, copied verbatim (user
 decision); the OCaml is left as it is. The OCaml prototype is **not maintained
 once the port is done**, so the two copies are not kept in step long-term.
 
@@ -424,8 +424,8 @@ of the prelude. Primitives merged (`5f16665`); the macro runtime interface merge
 and [follow-up verification](port-followup-verification.md) merged. [Prelude stage 1](port-prelude-stage1.md)
 and the verification rulings merged. A method's `~>` row, impl resolution by argument and procedural macros merged.
 [Unit interleaving and operator macros](port-unit-interleaving.md) merged
-(`stage2.fun` compiles). **Paused by the user** after this wave. Next: prelude stage 2
-(bind `stage2.fun` as the prelude). The deferred cleanups (the `Syntax.AddScope` / `Syntax.Map` duplicate)
+(`stage2.qll` compiles). **Paused by the user** after this wave. Next: prelude stage 2
+(bind `stage2.qll` as the prelude). The deferred cleanups (the `Syntax.AddScope` / `Syntax.Map` duplicate)
 wait for a quiet moment with no fork editing `Syntax.cs`.
 
 ## Readiness (2026-09-16)

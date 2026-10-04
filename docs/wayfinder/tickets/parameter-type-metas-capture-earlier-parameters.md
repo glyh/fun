@@ -1,6 +1,6 @@
 ---
 title: A parameter's type meta captures the earlier binders, not only `self`
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -125,7 +125,7 @@ work.
     reason the chosen rule leaves alone.
   - **The refusal instrumented** (`Invert`'s `a meta's spine argument is not a variable`,
     logging before the throw) and the whole suite run on the *unpatched* compiler:
-    `SPINE-REFUSAL ×1` for `01-ref-parameter-literal.fun` and **×0 across all 865 cases**.
+    `SPINE-REFUSAL ×1` for `01-ref-parameter-literal.qll` and **×0 across all 865 cases**.
     So on today's tree, no placeholder from any source reaches that path except the
     written-parameter-type shapes.
 
@@ -162,15 +162,15 @@ signature before choosing.
 
 - [a meta in a method's signature captures `self`](method-signature-metas-capture-self.md) — the fix
   this generalises, and the three findings it recorded
-- `src/Fun.Compiler/Elaborator.Structs.cs` — `MethodType`/`Params`/`MethodBody` and
+- `src/Quill.Compiler/Elaborator.Structs.cs` — `MethodType`/`Params`/`MethodBody` and
   `Context.WithoutSelfInMetas`
-- `src/Fun.Compiler/Unify.cs:144` (`Invert`) — where a non-variable spine entry is refused
-- `src/Fun.Compiler/Nbe.cs` — `InsertedMeta`, which reads the `EntryKinds` spine
+- `src/Quill.Compiler/Unify.cs:144` (`Invert`) — where a non-variable spine entry is refused
+- `src/Quill.Compiler/Nbe.cs` — `InsertedMeta`, which reads the `EntryKinds` spine
 
 ## Recon (base `f177993`, 2026-09-27; measured, not fixed)
 
 Scratch programs under `/tmp/param-meta-recon/`, run as
-`dotnet test/Fun.Conformance/bin/Debug/net10.0/Fun.Conformance.dll --file <p>.fun` after
+`dotnet test/Quill.Conformance/bin/Debug/net10.0/Quill.Conformance.dll --file <p>.qll` after
 `dotnet build`. Baseline on this base: **conformance 865/0, xUnit 188/188**.
 
 ### 1. The ticket's five probes — all five still fail, unchanged
@@ -275,7 +275,7 @@ single-parameter and `InferLam` cannot tell an earlier parameter from an enclosi
 
 ### 4. Structural finding for whichever shape is chosen
 
-`Syntax.Lam` is **single-parameter** (`src/Fun.Kernel/Syntax.cs:44`); `fn(a, r)` is nested `Lam`s, so
+`Syntax.Lam` is **single-parameter** (`src/Quill.Kernel/Syntax.cs:44`); `fn(a, r)` is nested `Lam`s, so
 `InferLam` cannot distinguish "earlier parameters of this same `fn`" from enclosing binders. The
 method fix could key on `selfLevel` because `Params` walks a parameter *list*; the plain-`fn` site
 has no such marker. Any "skip earlier parameters only" shape therefore needs either a new notion of

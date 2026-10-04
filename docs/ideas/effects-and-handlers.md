@@ -80,12 +80,12 @@ Second counter-argument (comments only): Why Algebraic Effects?, score 86, 58 co
 https://www.reddit.com/r/ProgrammingLanguages/comments/1kth7xm/why_algebraic_effects/, 2025-05 — a link
 post, so the argument lives entirely in its fetched comments.
 
-**Bearing on `fun`.** Rejected, with a reason recorded: multi-shot conflicts with refs
+**Bearing on `quill`.** Rejected, with a reason recorded: multi-shot conflicts with refs
 and C frames, and backtracking is written as data instead. A continuation is one-shot
 and is never captured across an extern frame (CONTEXT.md, **Continuation**). The
 community's resource objection is the *same* argument E7 records; the comprehension
 objection is a different one that E7 does not mention; and E7's other half — the
-extern-frame clause — appears nowhere in the corpus, so nothing outside fun corroborates
+extern-frame clause — appears nowhere in the corpus, so nothing outside quill corroborates
 it either way.
 
 ### Checking one-shotness at compile time instead of at run time
@@ -96,7 +96,7 @@ once, so a second `resume` is a compile error rather than the run-time message
 handler that uses it twice are then both visible in its type.
 
 **Buys.** The misuse moves to the definition, where the offending handler is written,
-instead of to whichever request happens to be the second one — the same move fun made
+instead of to whichever request happens to be the second one — the same move quill made
 with `HandledEffectEscapes`.
 
 **Costs.** Linearity infects the whole type system. The corpus spells the price out:
@@ -116,7 +116,7 @@ at compile time.
 **Source.** Benefits of linear types over affine types?, score 51, 30 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1e1o07f/benefits_of_linear_types_over_affine_types/, 2024-07.
 
-**Bearing on `fun`.** Genuinely new to the project. fun enforces one-shotness at run
+**Bearing on `quill`.** Genuinely new to the project. quill enforces one-shotness at run
 time *by choice* (domain-model E7: "enforced by construction, at run time — which is
 the model's choice"), and no ticket proposes moving it earlier.
 
@@ -150,7 +150,7 @@ corpus.
 **Source.** Koka's multi-prompt control monad?, score 24, 7 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/14cqhj1/kokas_multiprompt_control_monad/, 2023-06.
 
-**Bearing on `fun`.** Open implementation question, named in the model: E5 says "the
+**Bearing on `quill`.** Open implementation question, named in the model: E5 says "the
 port may route by evidence instead; the observable rule is the same." Today it routes
 lexically — a call with an open tail is `Core.Tunnel { named; handlers }` and a request
 skips the handlers its instance does not name (`effect_request.skips`). Switching to
@@ -181,7 +181,7 @@ of the idea rather than its validity.
 **Source.** Koka's multi-prompt control monad?, score 24, 7 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/14cqhj1/kokas_multiprompt_control_monad/, 2023-06.
 
-**Bearing on `fun`.** Genuinely new, and blocked by two settled choices at once:
+**Bearing on `quill`.** Genuinely new, and blocked by two settled choices at once:
 `resume` is a keyword-backed syntax form and "nothing can capture it" (E9), and a
 `match` is not a value. Making handlers first-class would force `HandledEffectEscapes`
 to be re-stated as a value-lifetime rule.
@@ -200,7 +200,7 @@ effects inside it, the way a function polymorphic in `A` cannot inspect an `A` �
 it removes *accidental handling*, a handler intercepting an effect raised by a callback
 that nothing in its own type mentions.
 
-**Costs.** Lexical routing must be computed: fun wraps such calls in `Core.Tunnel` and
+**Costs.** Lexical routing must be computed: quill wraps such calls in `Core.Tunnel` and
 routes by the full effect instance at run time. Dynamic fails silently when a
 higher-order boundary is forgotten, which is why the alternatives to it are a
 private-effect device or an explicit suppression written at every boundary. The
@@ -212,16 +212,16 @@ weight?*; comments on *Why Algebraic Effects?*,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1kth7xm/why_algebraic_effects/).
 A row answers the first half only: it says what may happen, not where it is handled.
 [The private-effect / explicit-suppression framing and the Zhang & Myers, Lexa and
-zero-overhead-lexical-handlers references come from fun's own
+zero-overhead-lexical-handlers references come from quill's own
 `handlers-tunnel-callback-effects` ticket, not from the corpus.]
 
 **Maturity.** Contested — two deployed research languages on the dynamic side, a POPL
 line of work on the lexical side; the corpus shows both positions held sincerely and
 never joined up.
 
-**Tried by.** Koka, OCaml 5 (dynamic); fun (lexical, implemented); Effekt (lexical by
-construction — second-class functions are named in fun's ticket as the rejected
-alternative for fun because everything else in fun is first-class).
+**Tried by.** Koka, OCaml 5 (dynamic); quill (lexical, implemented); Effekt (lexical by
+construction — second-class functions are named in quill's ticket as the rejected
+alternative for quill because everything else in quill is first-class).
 
 **Source.** Dynamic Effects System, score 24, 22 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/gmhr8a/dynamic_effects_system/, 2020-05;
@@ -230,7 +230,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1ex144g/what_are_your_tho
 ("control flow will jump to the nearest `try-with` block in the call stack" — that
 language's spelling).
 
-**Bearing on `fun`.** Already has it, named: handling is lexical, not dynamic
+**Bearing on `quill`.** Already has it, named: handling is lexical, not dynamic
 (domain-model E5, implemented 2026-09-15), routed by effect *instance* since
 `effects-followups`, with **Accidental handling** as the failure it rules out.
 
@@ -264,11 +264,11 @@ comments, https://www.reddit.com/r/ProgrammingLanguages/comments/1ml35ua/algebra
 Adjacent: Functional Dependency Injection after years?, score 22, 75 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/nf54og/functional_dependency_injection_after_years/, 2021-05.
 
-**Bearing on `fun`.** Has it differently, in the strongest sense fun already has it:
+**Bearing on `quill`.** Has it differently, in the strongest sense quill already has it:
 `~>` mints a leading implicit `EffectRow` binder in a signature
 (`effect-arrow-syntax`), and because handling is lexical, that row *is* the evidence —
 the operation is routed to the handler the row was bound to, without the parameter ever
-being written. This is the reading fun's own tunneling ticket gives of evidence
+being written. This is the reading quill's own tunneling ticket gives of evidence
 passing.
 
 ### A row on every arrow: declared effects, inferred effects, and no silent default
@@ -298,9 +298,9 @@ What the comments never supply is a measurement of either side.
 
 **Maturity.** Research as a language feature (Koka annotates a function with its
 effects; Unreal's
-scripting language reportedly has one); implemented in `fun`.
+scripting language reportedly has one); implemented in `quill`.
 
-**Tried by.** Koka, Effekt, fun; Unreal's UnrealScript 6 is asserted by a one-line link
+**Tried by.** Koka, Effekt, quill; Unreal's UnrealScript 6 is asserted by a one-line link
 post and nothing in it can be checked.
 
 **Source.** What is the benefit of tracking side effects?, score 44, 25 comments,
@@ -308,7 +308,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/uxh2ze/what_is_the_benefi
 Do you need a type system to have an effect system?, score 19, 14 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1b2y2pf/do_you_need_a_type_system_to_have_an_effect_system/, 2024-02.
 
-**Bearing on `fun`.** Already has it (named): bare arrow is pure; rows sit on arrows;
+**Bearing on `quill`.** Already has it (named): bare arrow is pure; rows sit on arrows;
 `->{_}` unsolved at an entry is `UnsolvedEffectRow`; a body under `: T` is
 `EffectsInPureResult`. Effect rows are dedicated syntax in their positions pending
 [general-set-literals](../wayfinder/tickets/general-set-literals.md), which is **open**.
@@ -319,7 +319,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1b2y2pf/do_you_need_a_typ
 has to admit. The remedies are an open tail (`A ->{IO | r} B`, so a caller's unknown
 effects ride through) and a sugar that mints a fresh row in parameter position and
 collects it in result position, so a higher-order function does not enumerate its
-callback's effects. fun additionally lets a row carry a *set* of tails, so a result
+callback's effects. quill additionally lets a row carry a *set* of tails, so a result
 unites several callbacks' rows.
 
 **Buys.** `f : (A ~> B) -> (C ~> D) ~> E` threads two independent callbacks' effects
@@ -343,7 +343,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/1kth7xm/why_algebraic_eff
 **Maturity.** Contested — the mechanism is built, the value of the discipline is
 disputed in the corpus's highest-scoring effects thread.
 
-**Tried by.** fun (multi-tail rows, `~>`), Koka (`exn int`-style annotations on
+**Tried by.** quill (multi-tail rows, `~>`), Koka (`exn int`-style annotations on
 functions); no production language
 in the corpus.
 
@@ -355,10 +355,10 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/g2lm11/row_polymorphism_w
 Adding row polymorphism to Damas-Hindley-Milner, score 48, 5 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1gab4p6/adding_row_polymorphism_to_damashindleymilner/, 2024-10.
 
-**Bearing on `fun`.** Already has it: `->{IO | r}`, `~>` minting and collecting,
+**Bearing on `quill`.** Already has it: `->{IO | r}`, `~>` minting and collecting,
 multi-tail rows as a set of row variables. Two open edges: the rank-1 shortcut is
 marked `ponytail:` in `effect-arrow-syntax` (a written binder is the rank-2 escape),
-and fun "intentionally avoids full lacks-constraint machinery" (algebraic-effects
+and quill "intentionally avoids full lacks-constraint machinery" (algebraic-effects
 Phase 6 note) — so duplicate-free rows are normalised, not constrained.
 
 ### Rows instead of monads and transformers
@@ -386,7 +386,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/o1ye66/whats_your_opinion
 the function would do, and another thread inventing algebra to get monad composition
 back, which is the disagreement in two posts.
 
-**Tried by.** fun (rows); Haskell (monads); Swift and Kotlin for the "mark the
+**Tried by.** quill (rows); Haskell (monads); Swift and Kotlin for the "mark the
 function" middle (named in the worth-their-weight thread).
 
 **Source.** Alternative to monads for enforcing purity?, score 39, 45 comments,
@@ -394,7 +394,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/lozq0h/alternative_to_mon
 Combining monads/effects is actually easy?, score 6, 8 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1weov94/combining_monadseffects_is_actually_easy/, 2026-09.
 
-**Bearing on `fun`.** Decided in `fun`'s favour by the design, not argued: `std/`
+**Bearing on `quill`.** Decided in `quill`'s favour by the design, not argued: `std/`
 contains no monad and declares no transformer; the effect requirement is
 `A ->{E} B`, `perform`, and `match` with effect branches. Whether a `do`-like
 sequencing form is ever wanted is untouched by any ticket.
@@ -432,7 +432,7 @@ block on it".
 **Source.** Thoughts on infectious systems: async/await and pure, score 117, 70
 comments, https://www.reddit.com/r/ProgrammingLanguages/comments/vofiyv/thoughts_on_infectious_systems_asyncawait_and_pure/, 2022-06.
 
-**Bearing on `fun`.** fun's rows infect *both* ways, and the upward wall is written
+**Bearing on `quill`.** quill's rows infect *both* ways, and the upward wall is written
 down: a body's effects must fit its declared row (`EffectsInPureResult`), and **a trait
 impl cannot widen its row past its trait's signature** (noted in
 `effects-followups-tunneling` as the reason a test cannot expose a remaining escape
@@ -482,7 +482,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/15n31u1/sync_async_and_co
 Onion, score 49, 29 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1mkruyr/onion_a_language_design_experiment_in/, 2025-08.
 
-**Bearing on `fun`.** Genuinely new — `fun` has no async mechanism at all and no
+**Bearing on `quill`.** Genuinely new — `quill` has no async mechanism at all and no
 concurrency item in the map. The type-level half already exists: `~>` means "the
 caller decides what this performs", which is colour determined by instantiation
 instead of hidden. What does not exist is anything that would make a row *suspend*.
@@ -525,8 +525,8 @@ Error handling with linear types and automatic concurrency? Par's new syntax sug
 score 39, 14 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1n5osyh/error_handling_with_linear_types_and_automatic/, 2025-09.
 
-**Bearing on `fun`.** Genuinely new to the project; the map has no concurrency item.
-The nearest thing fun brings is that any future such feature would have to show in a
+**Bearing on `quill`.** Genuinely new to the project; the map has no concurrency item.
+The nearest thing quill brings is that any future such feature would have to show in a
 row — an unhandled effect at the entry is an error today.
 
 ### Two effects instead of one: spawning is not suspending
@@ -554,10 +554,10 @@ retrieved.
 **Source.** Why spawning work isn't `async` in my language, score 16, 10 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1vgz5nu/why_spawning_work_isnt_async_in_my_language/, 2026-08.
 
-**Bearing on `fun`.** Genuinely new, and it would land exactly where fun's design wants
+**Bearing on `quill`.** Genuinely new, and it would land exactly where quill's design wants
 it: two ordinary effect families on rows, the way `Alloc(h)` / `Read(h)` / `Write(h)`
 already split one activity three ways because a read-only caller earns a weaker row.
-`fun` has no task or executor notion to hang them on yet.
+`quill` has no task or executor notion to hang them on yet.
 
 ### Green threads as the substrate instead of effects
 
@@ -594,7 +594,7 @@ https://www.reddit.com/r/ProgrammingLanguages/comments/zfa7h9/what_are_you_doing
 Designing async semantics for a new language. What would you do differently?, score 14,
 15 comments, https://www.reddit.com/r/Compilers/comments/1wtu8h4/designing_async_semantics_for_a_new_language_what/, 2026-09.
 
-**Bearing on `fun`.** Genuinely new, and in direct tension with a stated rule: a term
+**Bearing on `quill`.** Genuinely new, and in direct tension with a stated rule: a term
 needing a sub-evaluation gets a `Kont` frame, never a native one. Stackful green
 threads reintroduce a native stack per object-level call. The companion restriction on
 continuations — never captured across an extern frame — "has nothing to attach to yet:
@@ -654,7 +654,7 @@ comments, https://www.reddit.com/r/ProgrammingLanguages/comments/1je8job/i_dont_
 (link post — no body; its tree was fetched in the second pass, so 26 of its comments
 inform this entry).
 
-**Bearing on `fun`.** Has it differently: non-local failure is an ordinary effect
+**Bearing on `quill`.** Has it differently: non-local failure is an ordinary effect
 family handled by `match`'s effect branches, and `UnhandledEffects` at the entry keeps
 it honest; `option` and friends are ordinary values in `std`. The unsettled piece is
 `panic`: it is a **Primitive** whose fourth part — a failure behaviour — is exactly
@@ -670,7 +670,7 @@ return and every `?`, or `case`-ing on every intermediate.
 **Buys.** Error subtyping better than Rust's monad-based `Result` (the stated goal of
 one thread); no plumbing in the happy path; the handler can supply a default and turn
 the failure back into a value — that is what the `try`-with example in the other
-thread (its spelling, not `fun`'s) does with `resume Option::Some(1)`. The comments
+thread (its spelling, not `quill`'s) does with `resume Option::Some(1)`. The comments
 supply both prior art and the type-theoretic shape: "academia is cooking up the next
 crazy thing: effect handlers", with Koka, Effekt, Links and Unison named as the
 type-and-effect languages where "throwing an exception is one such effect" (comment on
@@ -686,7 +686,7 @@ passed as an argument" (comment on the low-level-exceptions thread, permalink ab
 **Costs.** Loses the forcing function of a `Result` in the type: the return-code side's
 whole case is that a value you must look at is easier to audit than a raise you can
 ignore. And the habit of handling at the nearest enclosing handler is the failure mode
-fun's tunneling rule exists to prevent. The strongest comment against is that a second
+quill's tunneling rule exists to prevent. The strongest comment against is that a second
 channel costs double: "when writing a generic function, a programmer must already
 handle generic values ... Adding generic exceptions to the mix *doesn't* remove this
 need, it just requires handling generic exceptions *on top* ... double the pain"
@@ -694,14 +694,14 @@ need, it just requires handling generic exceptions *on top* ... double the pain"
 
 **Maturity.** Contested — this is the axis's central unresolved argument.
 
-**Tried by.** Koka, Effekt, fun (effect side); Rust, Go, Haskell (value side).
+**Tried by.** Koka, Effekt, quill (effect side); Rust, Go, Haskell (value side).
 
 **Source.** Single-continuation algebraic effects in an imperative language?, score 18,
 10 comments, https://www.reddit.com/r/ProgrammingLanguages/comments/14iz6jf/singlecontinuation_algebraic_effects_in_an/, 2023-06;
 Error handling with linear types and automatic concurrency?, score 39, 14 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1n5osyh/error_handling_with_linear_types_and_automatic/, 2025-09.
 
-**Bearing on `fun`.** Already has it: an error family declared with
+**Bearing on `quill`.** Already has it: an error family declared with
 `effect Name(params) = sig … end`, raised with `perform`, handled in a `match`, with
 residual effects preserved. What `std/` does **not** have yet: it declares no effect
 family at all — there is no standard error effect, so which shape the library picks is
@@ -729,7 +729,7 @@ question is which correctness claim the compiler adopts, not philosophy; and ref
 to drop non-terminating loops forces "now you need to prove termination of loops that
 you want to remove using dead code elimination" (comments on
 https://www.reddit.com/r/ProgrammingLanguages/comments/tdlff4/infinite_loops_a_sideeffect_or_an_implementation/).
-On the other side a Haskell commenter states fun's position as a concession to cost:
+On the other side a Haskell commenter states quill's position as a concession to cost:
 the cost of detecting divergence is "great, so in the name of practicality purely
 functional languages has to consider it to not be an effect", and another notes that
 throwing is only impure "if you consider nontermination an effect" — the two questions
@@ -743,7 +743,7 @@ thread.
 **Source.** Infinite loops: a side-effect, or an implementation detail?, score 78, 45
 comments, https://www.reddit.com/r/ProgrammingLanguages/comments/tdlff4/infinite_loops_a_sideeffect_or_an_implementation/, 2022-03.
 
-**Bearing on `fun`.** Rejected, with the reason recorded: divergence is not an effect,
+**Bearing on `quill`.** Rejected, with the reason recorded: divergence is not an effect,
 termination is never checked, and the checker's **evaluation budget** measures work
 spent while type checking — calls, conversions, macro applications — and is a compile
 error naming the call, not a judgement about whether a term halts. Running a program
@@ -770,23 +770,23 @@ rediscover, which is not the same as easy to get right. The comments disagree ab
 whether allocation belongs in effects at all: memory allocation "cannot be lumped
 together with actual program effects such as console output or HTTP requests, otherwise
 there would be no pure functions in practice at all", and whether "the stack [should
-be] purer than the heap just because it is automatic" — against the design fun chose, spelled out by
+be] purer than the heap just because it is automatic" — against the design quill chose, spelled out by
 another commenter — "Allocating an unrestricted point must be an IO side effect since
 it introduces shared mutable state. Allocating a linear pointer would be pure", with
 *Lightweight Linear Types* named as the theory (comments on *The purely functional C?
 (or other simple equivalent)*,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1dmqtxj/the_purely_functional_c_or_other_simple_equivalent/).
-That is a disagreement with fun's decided shape, not with its engineering.
+That is a disagreement with quill's decided shape, not with its engineering.
 
 **Maturity.** Research — Haskell's `ST` and Koka's heap effects are the precedents;
-implemented in `fun`.
+implemented in `quill`.
 
-**Tried by.** Haskell (`ST`, and the thread's rank-N encoding), Koka, fun.
+**Tried by.** Haskell (`ST`, and the thread's rank-N encoding), Koka, quill.
 
 **Source.** Deriving an Effect System for the ST monad, score 30, 17 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/pweawl/deriving_an_effect_system_for_the_st_monad/, 2021-09.
 
-**Bearing on `fun`.** Already has it, named: **Heap**, **Reference**, **Mutation
+**Bearing on `quill`.** Already has it, named: **Heap**, **Reference**, **Mutation
 effect**, **Discharge** — `Alloc(h)` / `Read(h)` / `Write(h)` with *no* merged `Mut`
 (rejected, so read-only code earns the weaker row), local heaps discharged at
 generalisation, and the entry's runtime handler discharging the rest. Top-level refs
@@ -816,7 +816,7 @@ dispose") is explicitly hedged.
 **Source.** Should for loops dispose of their iterators?, score 13, 57 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1rg5nwt/should_for_loops_dispose_of_their_iterators/, 2026-02.
 
-**Bearing on `fun`.** Genuinely new: `fun` has no resource or disposal mechanism and no
+**Bearing on `quill`.** Genuinely new: `quill` has no resource or disposal mechanism and no
 linearity, so nothing owns anything. The vocabulary that would carry it already
 exists — **Discharge** (drop what cannot escape) and **Handler scope** (what may leave)
 are the same shape of rule applied to heaps and effects.
@@ -847,11 +847,11 @@ languages.
 **Source.** Async exceptions and dynamic-wind: language design, score 14, 9 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/nsyb76/async_exceptions_and_dynamicwind_language_design/, 2021-06.
 
-**Bearing on `fun`.** Largely avoided by construction — one-shot continuations mean no
+**Bearing on `quill`.** Largely avoided by construction — one-shot continuations mean no
 re-entry loop, and `dynamic-wind`'s re-run-on-each-entry problem does not arise. What
 is *not* settled: a stored continuation may be resumed after its branch returns
 (schedulers, async) and "resuming re-enters the handler scope", so anything
-resource-like held across that resume needs an owner fun does not have yet. Pair with
+resource-like held across that resume needs an owner quill does not have yet. Pair with
 the `for`-loop entry; no ticket covers either.
 
 ### Capability passing instead of (or beside) an effect row
@@ -892,7 +892,7 @@ Working on a new programming language with mandatory tests and explicit effects,
 20, 19 comments,
 https://www.reddit.com/r/Compilers/comments/1rkov4c/working_on_a_new_programming_language_with/, 2026-03.
 
-**Bearing on `fun`.** Has it differently, and the word is already load-bearing: fun's
+**Bearing on `quill`.** Has it differently, and the word is already load-bearing: quill's
 tunneling decision says handlers become **lexically scoped capabilities** — an
 operation is routed to the handler its row was bound to. The project has used the
 word for something else too: the expander's handle is a capability, not a context
@@ -921,9 +921,9 @@ procedure or cost model falls out of it. It is intuition, not a mechanism.
 **Source.** Are (co)effects isomorphic to message passing concurrent systems?, score 15,
 9 comments, https://www.reddit.com/r/ProgrammingLanguages/comments/1t08my3/are_coeffects_isomorphic_to_message_passing/, 2026-04.
 
-**Bearing on `fun`.** Genuinely new to the project, and it is the only entry here that
+**Bearing on `quill`.** Genuinely new to the project, and it is the only entry here that
 would matter to a *future* concurrency story: the map has no concurrency item, so
-there is nothing for it to contradict. `fun`'s current routing (`Core.Tunnel`,
+there is nothing for it to contradict. `quill`'s current routing (`Core.Tunnel`,
 `effect_request.skips`) is a direct mechanism with no message passing in it.
 
 ### The effect row as a supply-chain audit point
@@ -945,12 +945,12 @@ through effects, so a primitive that bypasses the row defeats the whole claim.
 **Maturity.** Speculative — a question asked, with no research cited and no
 implementation proposed.
 
-**Tried by.** Nobody has shipped this use; `fun` is closer than most by accident.
+**Tried by.** Nobody has shipped this use; `quill` is closer than most by accident.
 
 **Source.** Effect systems as help with supply chain security, score 36, 42 comments,
 https://www.reddit.com/r/ProgrammingLanguages/comments/1npzw1c/effect_systems_as_help_with_supply_chain_security/, 2025-09.
 
-**Bearing on `fun`.** Genuinely new use of something fun already has: every arrow
+**Bearing on `quill`.** Genuinely new use of something quill already has: every arrow
 carries its row, an unhandled effect at a compilation unit's entry is an elaboration
 error, and `pub` is a Binding's own notion — so the audit point exists before
 anybody asked for it. Untested and unticketed; the nearest hazard is `panic`, the one
@@ -1017,9 +1017,9 @@ nothing at all turns into the richest single source in this document.
 **Words the corpus never uses — and the comments did not supply them either.** There is
 not one occurrence of "deep handler", "shallow handler", "multi-shot" or "effect row"
 in the 2538 threads, and still zero across all 515 retrieved comments (verified
-again after the comment pass; the plural spellings are absent too). fun's
+again after the comment pass; the plural spellings are absent too). quill's
 deep-vs-shallow decision and its row spelling cannot be corroborated or contradicted by
-this corpus at all — they are fun's own, and the "shallow handlers are deferred" choice
+this corpus at all — they are quill's own, and the "shallow handlers are deferred" choice
 is untested against outside experience here. Do not read silence as agreement. What the
 comments *did* supply, by contrast, is *why* a reader objects to handlers:
 comprehension, not mechanism.
@@ -1035,14 +1035,14 @@ benchmark: the only quantified performance claim in the axis remains Midori's 7%
 and a practitioner comment now contests it rather than replacing it.
 
 **What would actually settle the open ones.** (1) *Evidence passing vs `Core.Tunnel`*:
-a measurement — both are claimed to be constant-time, neither is measured in `fun`.
+a measurement — both are claimed to be constant-time, neither is measured in `quill`.
 (2) *Multi-shot*: an implementation with unrestricted mutation and a resource held
 across a resume; the corpus argues this and never builds it, and the comment pass adds
 a second objection (reading non-local control) that no implementation would answer
 anyway. (3) *Colour*: a colourless design with function pointers and a real library
 boundary, which is exactly what the Zig thread asks for and does not get — the comments
 answer that inferring colour is undecidable in general, so the question narrows to how
-much of it a compiler may assume. (4) *Resources*: fun has no disposal mechanism and no
+much of it a compiler may assume. (4) *Resources*: quill has no disposal mechanism and no
 ticket proposing one; the `for`-loop and `dynamic-wind` threads are the two questions
 waiting for it. (5) *Divergence, deep/shallow, row spelling*: read papers and
 implementations directly — this corpus has nothing on them. (6) *The two missing
@@ -1066,11 +1066,11 @@ Corrections made by the comment pass:
   comments were retrieved, so the entry cites comment material alongside the title.
 
 Dissent that the entries above carry but that is worth listing: allocation should not be
-an effect at all (against fun's decided three heap effects); a second channel for
+an effect at all (against quill's decided three heap effects); a second channel for
 effects doubles the work of writing generic code; `can Panic`-style pollution is the
 growth failure of rows, answered by an assumed default row; and the multi-shot argument
-fun records is only half the community's argument — the other half is that handlers are
-hard to *read*, which fun's one-shot rule does not address.
+quill records is only half the community's argument — the other half is that handlers are
+hard to *read*, which quill's one-shot rule does not address.
 
 Could not resolve with the material available: whether any implementation anywhere
 types `resume` linearly (neither the 2538 threads nor the 515 comments name one — "not

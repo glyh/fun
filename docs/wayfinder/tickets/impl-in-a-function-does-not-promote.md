@@ -1,6 +1,6 @@
 ---
 title: An impl declared inside a function does not promote its bound
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -20,7 +20,7 @@ function** whose head variable comes from the enclosing binder does not.
 
 ## The reproducer
 
-```fun
+```quill
 { trait Size(A) = sig { size : A -> I64 };
   impl Size(I64) = module { fn size(x) { 1 } };
   f = fn[B : Type] { impl Size(List(B)) = module { fn size(xs) { match (xs) { Nil => 0, Cons(h, t) => Size.size(h) } } }; 1 };
@@ -33,7 +33,7 @@ ELAB missing implementation of `Size`
 
 The control — the same impl with a body that never uses its element — elaborates:
 
-```fun
+```quill
   f = fn[B : Type] { impl Size(List(B)) = module { fn size(xs) { 42 } }; 1 };
 #   -> VALUE 1
 ```
@@ -60,9 +60,9 @@ lands wherever the macro is invoked.
 
 ## Reading
 
-- `src/Fun.Compiler/Elaborator.Traits.cs` — `Contribute`'s promotion of pending evidence,
+- `src/Quill.Compiler/Elaborator.Traits.cs` — `Contribute`'s promotion of pending evidence,
   and `ResolveVar`/`IndexOf`, which walk the impl's own variables
-- `test/conformance/cases/values/trait-generic-impl-bound-in-body.fun` — the top-level
+- `test/conformance/cases/values/trait-generic-impl-bound-in-body.qll` — the top-level
   shape that works, to be extended rather than replaced
 - [A generic impl's head variable carries no bound](generic-impl-head-var-has-no-bound.md)
   — the fix this is the missing half of
@@ -76,7 +76,7 @@ lands wherever the macro is invoked.
   meta's solution is a lambda-wrapped constant (`987 -> VLam(…) -> VMeta 988 -> VMeta 989`) and
   the body's demand forces to meta `989`. Deriving each head variable's identity by **forcing its
   recorded value after the head is elaborated** — a one-line widening of `Contribute` — fixes it:
-  the fork's `/tmp/probe_b.fun` printed `VALUE 1`. This is the shape the *case rule* asks for,
+  the fork's `/tmp/probe_b.qll` printed `VALUE 1`. This is the shape the *case rule* asks for,
   since a lowercase head name is the impl's own.
 - **This ticket's own reproducer spells `impl Size(List(B))` with an uppercase `B`**, written
   before the case rule landed. Under that rule an uppercase free name is a **reference to the

@@ -1,6 +1,6 @@
 ---
 title: `expand_decls` — read a Decl argument's items, parsed in order
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -19,7 +19,7 @@ A `(d : List(Decl))` macro parameter arrives unread (one `DeclItems`), because a
 declaration can change how the next one parses (M9: bodies stay raw until
 expansion reaches them):
 
-```fun
+```quill
 twice_decls({
   syntax inc { inc $x => $x + 1 };
   y = inc 1          // parses only after `inc` is registered

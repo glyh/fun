@@ -32,7 +32,7 @@ own file when it is picked up. Counts are C# conformance cases.
 > elaboration failed: a declaration syntax form in a block writes only private lets,
 > opens and syntax
 
-The stage-2 `type` macro emits `export` (see `type_exports` in `dotnet/std/stage2.fun`),
+The stage-2 `type` macro emits `export` (see `type_exports` in `dotnet/std/stage2.qll`),
 and `Expander.Roles.cs:243` `DeclOver` rejects it when the form is used inside a block.
 
 ### Grilled (2026-09-18): the site adapts, and a written `export` is an error
@@ -54,7 +54,7 @@ about `pub`. The block site is the other half of the same rule.
    implementations agree and nothing is listed in `prototype-divergences.txt`. No
    provenance plumbing was needed either: the generated/written split is already
    `Public: false` vs `true`. The shared case is
-   `test/conformance/cases/elaborate/written-export-in-block.fun` (expect `error`).
+   `test/conformance/cases/elaborate/written-export-in-block.qll` (expect `error`).
 
 **Rejected for now: an ambient `$site` hole** letting the macro adapt itself. It
 competes with `publish` rather than joining it, and it has exactly one client

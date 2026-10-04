@@ -1,6 +1,6 @@
 ---
 title: The negative-tuple-arity refusal, and crash-class mutants in the suite
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: open
@@ -38,15 +38,15 @@ correct semantics, not a case a budget should absorb.
 
 ## What pins it now
 
-- `elaborate/tuple-negative-arity.fun` (`{ y = Tuple(0 - 5); 1 }`, expects `error`) — passes on
+- `elaborate/tuple-negative-arity.qll` (`{ y = Tuple(0 - 5); 1 }`, expects `error`) — passes on
   the clean tree, and **fails on the mutant** (observed under `--isolated`: the 60s elaboration
   timeout). The guard is pinned in-process, at the cost of a minute when it is broken.
-- `elaborate/tuple-negative-arity-crash-class.fun` (`{ g = fn(x) { x }; g(Tuple(0 - 5)); 1 }`,
+- `elaborate/tuple-negative-arity-crash-class.qll` (`{ g = fn(x) { x }; g(Tuple(0 - 5)); 1 }`,
   expects `error`) — **added 2026-10-04**, the crash-class spelling above, beside its sibling.
   Passes on the clean tree (`ELAB Tuple: the number of components is negative`; suite 962 cases,
   0 failed). This shape cannot be trusted in-process on the mutant (it kills the runner), so the
   case exists for `--isolated` — see the measurements under *Remains*.
-- The runner's `--isolated` mode (filed 2026-10-03, `test/Fun.Conformance/Program.cs`) runs
+- The runner's `--isolated` mode (filed 2026-10-03, `test/Quill.Conformance/Program.cs`) runs
   each case as a `--case` child process, so a crash is one case's failure. Verified against
   the mutant: the runner survives, reports the case as failed, exits 1.
 
@@ -57,13 +57,13 @@ correct semantics, not a case a budget should absorb.
   times out at 60s (survivable), a race. `--isolated` removes the race: both outcomes are one
   case's failure.
 - **The crash-class shape has no in-process case.** — **done 2026-10-04**:
-  `elaborate/tuple-negative-arity-crash-class.fun` is the case; see *What pins it now*.
+  `elaborate/tuple-negative-arity-crash-class.qll` is the case; see *What pins it now*.
 - **The mutation sweep should run with `--isolated`.** Any mutant whose failure mode is a crash —
   this one's shape, or any future infinite-type bug — is only classifiable per-case in isolated
   mode. **Measured 2026-10-04** with the guard at `Primitives.cs:165` deleted and rebuilt
   (`echo "build exit=$?"` → `build exit=0`), against the crash-class case in a one-case root:
-  - `dotnet test/Fun.Conformance/bin/Debug/net10.0/Fun.Conformance.dll --isolated <root>` —
-    both runs: `FAIL elaborate/tuple-negative-arity-crash-class.fun: FAIL elaboration did not
+  - `dotnet test/Quill.Conformance/bin/Debug/net10.0/Quill.Conformance.dll --isolated <root>` —
+    both runs: `FAIL elaborate/tuple-negative-arity-crash-class.qll: FAIL elaboration did not
     finish within 60s`, then `conformance (isolated): 1 cases, 1 failed`, runner exit 1,
     60s elapsed. The runner survives and the case is classified.
   - the same case as a raw `--case` child (the way `--isolated` spawns it) —
@@ -73,5 +73,5 @@ correct semantics, not a case a budget should absorb.
   So the race described above landed both ways in one session: the timeout under the isolated
   harness, the uncatchable crash in the raw child. Either outcome is one case's failure under
   `--isolated` and a dead in-process run. The guard was restored afterwards (`git diff
-  src/Fun.Compiler/Primitives.cs` empty against the pre-ablation commit); the ablation is in no
+  src/Quill.Compiler/Primitives.cs` empty against the pre-ablation commit); the ablation is in no
   commit.

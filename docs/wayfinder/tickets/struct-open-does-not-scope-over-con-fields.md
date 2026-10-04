@@ -1,6 +1,6 @@
 ---
 title: Struct open does not scope over con_fields
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -156,7 +156,7 @@ recommended.
    before it, as in `module`. Method bodies are checked after all fields, so a
    method sees every field, including later ones. A field type that depends on a
    method is a cycle error.
-   ```fun
+   ```quill
    R = struct {
      open M;
      f : T;                      // T from M

@@ -1,6 +1,6 @@
 ---
 title: Procedural macros capture use-site variables
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

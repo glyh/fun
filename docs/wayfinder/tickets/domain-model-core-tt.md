@@ -1,6 +1,6 @@
 ---
 title: Domain model for core_tt before the port
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed

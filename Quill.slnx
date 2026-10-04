@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Quill.Cli/Quill.Cli.csproj" />
+    <Project Path="src/Quill.Compiler/Quill.Compiler.csproj" />
+    <Project Path="src/Quill.Expand/Quill.Expand.csproj" />
+    <Project Path="src/Quill.Kernel/Quill.Kernel.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Quill.Conformance/Quill.Conformance.csproj" />
+    <Project Path="test/Quill.Tests/Quill.Tests.csproj" />
+  </Folder>
+</Solution>

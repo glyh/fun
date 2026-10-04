@@ -1,6 +1,6 @@
 ---
 title: Refs belong in effect rows
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -44,7 +44,7 @@ invisible too, and:
   maker's type; the error surfaces in client code as `a.Symbol ≠ b.Symbol`.
 - **Higher-order code cannot be both sound and useful.**
 
-  ```fun
+  ```quill
   merge_twice = fn(mk : Unit -> SetSig can {}) ->
     do a = mk(()); b = mk(()); a.union(a.empty, b.empty) end
   ```
@@ -80,7 +80,7 @@ run this during type checking", but it is no longer where purity is decided.
   (so local mutation is pure from outside).
 - **A signature says what it mutates by naming the ref**, or infers it; both are
   valid:
-  ```fun
+  ```quill
   bump = fn(r : Ref(I64)) can {Mutate(r)} { r <- !r + 1 }   // names the ref
   bump = fn(r : Ref(I64)) can _ { r <- !r + 1 }             // inferred
   ```

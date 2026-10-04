@@ -1,6 +1,6 @@
 ---
 title: Reconcile the struct-as-module decision title with its topic body
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:grilling
 status: closed

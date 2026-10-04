@@ -1,6 +1,6 @@
 ---
 title: Dotted paths and compiler-known names are found by first match on a spelling
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

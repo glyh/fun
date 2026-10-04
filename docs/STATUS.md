@@ -1,6 +1,6 @@
 # STATUS — canonical current implementation snapshot
 
-This is the **authoritative** status document for the `fun` compiler. When other docs disagree
+This is the **authoritative** status document for the `quill` compiler. When other docs disagree
 with this file, STATUS.md wins.
 
 **The implementation is the C# port in the repository root**: `src/` (compiler), `std/` (prelude
@@ -38,7 +38,7 @@ After the pattern-grammar work in the entry below, same day:
   selection field, so the two forms are symmetric in the AST, and `export M.{…}` stopped rejecting a
   unit's role or macro along the way.
 - **A unit-level `rec` with written implicit binders works** (`88f862f`), so the non-recursive
-  wrapper `std/list.fun` had been forced to write around it is gone. Two carries in the same family
+  wrapper `std/list.qll` had been forced to write around it is gone. Two carries in the same family
   followed: an impl's `Vars`/`Bounds` now survive readback and rebuild (`65c1e39`), including the
   renaming route (`51ae973`).
 - **A struct's type is its fields.** `IsTypeLike` asks only `Kind == Field` entries to be type-like
@@ -133,8 +133,8 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   head variable (the impl's own container, or another trait at a structured type) is
   left where it was made, so it fails at the impl's **definition** naming the missing
   evidence — never as a misleading use-site error. This is what `derive` rests on.
-- Measured on the gate: `std/list.fun` carrying a non-recursive
-  `pub impl probe : Eq(List(A))`, `export Lists.{probe}` in `std/stage2.fun`, a
+- Measured on the gate: `std/list.qll` carrying a non-recursive
+  `pub impl probe : Eq(List(A))`, `export Lists.{probe}` in `std/stage2.qll`, a
   no-import program comparing two lists answers `VALUE True`, and `{ 1 }` stays
   `VALUE 1`. Both `std/` edits were reverted; `std/` is unchanged. The recursive body
   a real structural equality needs is still blocked by
@@ -152,9 +152,9 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   `Std.Lists` (length, reverse, append, concat, map, filter, fold, find, head, tail,
   nth, head_or, nth_or, take, drop, zip, zip_with, any, all, range) and
   `Std.Options` (map, bind, get_or, or_else, filter, is_some), with the bare
-  one-per-language helpers `and`/`or`/`min`/`max`/`abs` beside `not`. `std/list.fun`
-  **is** the `Lists` module, `std/option.fun` is new and **is** `Options`, and
-  `std/stage2.fun` publishes both as members (`pub Lists = import "std/list"`)
+  one-per-language helpers `and`/`or`/`min`/`max`/`abs` beside `not`. `std/list.qll`
+  **is** the `Lists` module, `std/option.qll` is new and **is** `Options`, and
+  `std/stage2.qll` publishes both as members (`pub Lists = import "std/list"`)
   instead of flattening them — so a bare `map`/`length` is reachable only through a
   program's own `open Std.Lists`, and `Std.Lists.map` is the one spelling. The
   prelude's binding is `Std` (was `stdlib`), so the unit, the path and the handle
@@ -195,18 +195,18 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
 ### Repo layout — the port lifted to the root (2026-09-26)
 
 - `dotnet/` is gone: `dotnet/src` → `src/`, `dotnet/std` → `std`,
-  `dotnet/test/{Fun.Tests,Fun.Conformance}` → `test/{Fun.Tests,Fun.Conformance}` (beside
-  `test/conformance/cases`, which never moved), `Fun.slnx` and `Directory.Build.props` → root.
+  `dotnet/test/{Quill.Tests,Quill.Conformance}` → `test/{Quill.Tests,Quill.Conformance}` (beside
+  `test/conformance/cases`, which never moved), `Quill.slnx` and `Directory.Build.props` → root.
   The wrapper only ever existed to tell the two implementations apart, and the prototype's
   deletion retired that job. Relative paths kept their shape — `src/` and `test/` moved together,
-  so every `ProjectReference` and the prelude's `..\..\std\*.fun` still resolve — which is why
+  so every `ProjectReference` and the prelude's `..\..\std\*.qll` still resolve — which is why
   the move needed no project-file edit at all.
 - **Measured after the move** (integrator run): `dotnet build` succeeds from the root,
   `conformance: 773 cases, 0 failed`, xUnit `185/185`. Both counts are higher than the
   2026-09-25 entries below (763 cases, 185 xUnit) because cases landed after that measurement;
   the suite grew, nothing regressed.
 - Docs updated for the new layout: `CLAUDE.md`, `README.md`, `test/conformance/cases/README.md`,
-  this header, and the comments in `test/Fun.Conformance/Program.cs` and `src/Fun.Compiler/Prelude.cs`.
+  this header, and the comments in `test/Quill.Conformance/Program.cs` and `src/Quill.Compiler/Prelude.cs`.
   Dated entries below keep the paths they were written with.
 
 ### .NET port — parity re-measured (2026-09-25)
@@ -259,7 +259,7 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   quotes, the runtime, type-aware macros, operator macros); a unit's expansion and
   elaboration interleaved per top-level binding, so a macro compiles as of its
   definition; impl resolution by argument type; a method's `~>` row; stuck matches.
-- `dotnet/std/stage2.fun` now compiles as a unit; binding it as the prelude is next
+- `dotnet/std/stage2.qll` now compiles as a unit; binding it as the prelude is next
   (operators ~171 cases, `type` ~89).
 - User rulings this round, each ticketed: impls resolve to the most precise matching
   one (`traits.md` "Resolution"; nothing to order until impls can be generic); a block
@@ -272,7 +272,7 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   primitives (one table, checked I64); the expander's `IMacroRuntime` with roles
   through imports; references (`Mutate` rows, heap discharge, E6 through stores);
   `~>` arrows, method rows, generative modules; prelude stage 1 elaborated from
-  `dotnet/std/stage1.fun`, bound as `stdlib`, opened around every program;
+  `dotnet/std/stage1.qll`, bound as `stdlib`, opened around every program;
   let-generalisation; both conformance runners now evaluate `error` cases.
 - User rulings this wave, each ticketed as a prototype defect and listed in
   `prototype-divergences.txt` (13 in all): checking against an implicit function
@@ -307,7 +307,7 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   `match` compiled to decision trees, non-recursive enums as nominals (E11).
 - Built by five parallel forks against written conventions (port ticket,
   "Porting conventions"); each wave-1 ticket records its merge and follow-ups.
-- The prelude's source is copied to `dotnet/std/stage{1,2}.fun`; the OCaml
+- The prelude's source is copied to `dotnet/std/stage{1,2}.qll`; the OCaml
   prototype is not maintained once the port is done.
 - A bare constructor pattern resolves like any other name (binder or open); the
   prototype's by-name lookup is ticketed and listed as a divergence.
@@ -315,8 +315,8 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
 ### .NET port — slice 1: reader to evaluator (2026-09-16)
 
 - The C# port lives in `dotnet/` in this repo, so `test/conformance/cases` stays
-  one copy. Three projects (`Fun.Kernel`, `Fun.Expand`, `Fun.Compiler`, plus
-  `Fun.Cli` and two test projects): the split enforces that `Fun.Expand` cannot
+  one copy. Three projects (`Quill.Kernel`, `Quill.Expand`, `Quill.Compiler`, plus
+  `Quill.Cli` and two test projects): the split enforces that `Quill.Expand` cannot
   reference the elaborator, as `core_tt_expand` cannot today. `dune build`
   ignores `dotnet/` (root `dune`, `(dirs :standard \ dotnet)`).
 - The whole pipeline runs for the prelude-free subset: a hand-written reader
@@ -355,9 +355,9 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
 
 ### Shared conformance suite (2026-09-16)
 
-- `test/conformance/cases/<area>/<name>.fun` + `<name>.expect` is the
+- `test/conformance/cases/<area>/<name>.qll` + `<name>.expect` is the
   language-behaviour suite both the prototype and the .NET port run; extra units
-  are `<name>.unit-<unit>.fun`. 601 cases (`values`, `macros`, `imports`,
+  are `<name>.unit-<unit>.qll`. 601 cases (`values`, `macros`, `imports`,
   `elaborate`), extracted from the Alcotest binaries. **It is now the only copy:**
   the Alcotest cases it covers are deleted (`test_core` 443 → 172 cases,
   `test_elaborate` 500 → 269), so a language behaviour is tested in exactly one
@@ -994,12 +994,12 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   cache fingerprinting (the macro cache is still keyed by module path). See
   [macro interleaving design](wayfinder/topics/macro-interleaving-design.md),
   [type-aware interleaving](wayfinder/macro-system/TYPE_AWARE_INTERLEAVING.md),
-  and the [direction map](wayfinder/fun-design-map.md).
+  and the [direction map](wayfinder/quill-design-map.md).
 
 ### Private type visibility
 - Design-only task using the OCaml/SML model (private types become abstract outside
   their defining module). See [private type visibility](wayfinder/topics/private-type-visibility.md)
-  and the [direction map](wayfinder/fun-design-map.md).
+  and the [direction map](wayfinder/quill-design-map.md).
 
 ### Generated symbol cleanup
 - Trait declaration markers, struct nominal hashes, and other compiler-internal

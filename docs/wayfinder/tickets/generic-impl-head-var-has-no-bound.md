@@ -1,6 +1,6 @@
 ---
 title: A generic impl's head variable carries no bound
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -16,15 +16,15 @@ Found 2026-09-27 by the [library surface](design-std-library-surface.md) fork, w
 stopped rather than stub around it, and reproduced by the integrator. The landed half
 is the *head*: an impl whose head is a pattern over types registers and serves its
 instances — [trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md) landed
-that on 2026-09-27, and `test/conformance/cases/values/trait-generic-impl.fun` pins it
+that on 2026-09-27, and `test/conformance/cases/values/trait-generic-impl.qll` pins it
 ("an impl head's free name is its own type variable: `Option(A)` serves `Option(I64)`").
 The missing half is the **bound**: the head's free name carries no trait bound, so
 there is no dictionary to pass for it inside the method body.
 
 ## The measurement
 
-Four configurations, each a one-line addition to `std/list.fun` plus
-`export Lists.{probe};` in `std/stage2.fun`, then `dotnet build` and a program
+Four configurations, each a one-line addition to `std/list.qll` plus
+`export Lists.{probe};` in `std/stage2.qll`, then `dotnet build` and a program
 asking `Cons[I64](1, Nil[I64]) == Cons[I64](1, Nil[I64])`:
 
 | impl | body | `{ 1 }` (control) | the probe |
@@ -62,12 +62,12 @@ and why the library ships without `Eq(List(A))`.
 
 ## Reading
 
-- `src/Fun.Compiler/Elaborator.Traits.cs` — `TraitEvidence`, `PendingEvidence`, and
+- `src/Quill.Compiler/Elaborator.Traits.cs` — `TraitEvidence`, `PendingEvidence`, and
   the context's `Evidence` list
-- `src/Fun.Compiler/Elaborator.Implicits.cs` — `ResolveEvidence`, `AddEvidence`, the
+- `src/Quill.Compiler/Elaborator.Implicits.cs` — `ResolveEvidence`, `AddEvidence`, the
   dictionary threading this body never gets
-- `test/conformance/cases/values/trait-generic-impl.fun`,
-  `test/conformance/cases/imports/trait-generic-impl-in-imported-module.fun` — what
+- `test/conformance/cases/values/trait-generic-impl.qll`,
+  `test/conformance/cases/imports/trait-generic-impl-in-imported-module.qll` — what
   the head half already guarantees, and the shape to extend rather than replace
 - [impl visibility](../topics/impl-visibility.md) — why resolution stays scoped, and
   the named-impl escape hatch this sits beside

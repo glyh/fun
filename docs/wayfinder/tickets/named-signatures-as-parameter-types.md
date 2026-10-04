@@ -1,6 +1,6 @@
 ---
 title: A let-bound signature cannot be a parameter type; dependent signatures fail
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -14,7 +14,7 @@ blocked_by:
 
 Found by the decl-output-open-param run (2026-09-15); pre-existing.
 
-```fun
+```quill
 Sig = sig { x : I64 };
 f = fn(m : Sig) { m.x }          // CannotUnify(module value vs Type)
 g = fn(m : sig { x : I64 }) { m.x }   // works (inline)
@@ -55,7 +55,7 @@ signature value, distinct from a module. A module whose members are all types is
   signature must bind `T` abstractly (a telescope: `m.v : m.T`), which a
   `VModule` signature (entries of plain values) cannot express. Decide the
   representation (Σ-like telescope of closures, or translucent members) first.
-  ```fun
+  ```quill
   h = fn(m : sig { T : Type; v : T }) { m.v };
   h(module { pub T = I64; pub v = 3 })   // CannotUnify(Type vs I64)
   ```
@@ -70,7 +70,7 @@ A signature is a telescope: a later member's type may mention an earlier member.
 For a parameter `s : Stack`, member types are read through the parameter
 (`s.empty : s.T`); what `T` is becomes known only when a module is passed.
 
-```fun
+```quill
 Stack = sig { T : Type; empty : T; size : T -> I64 };
 IntStack = module { pub T = List(I64); pub empty = Nil; pub size = length };
 count = fn(s : Stack) { s.size(s.empty) }   // s.empty : s.T
@@ -83,7 +83,7 @@ An impl required by a signature must be named; an anonymous `impl` in a `sig` is
 an error naming the required form. The name is a member: `s.ord_T` reaches it,
 and `open s` also brings it into trait resolution.
 
-```fun
+```quill
 Ordered = sig { T : Type; ord_T : impl Ord(T) };
 max_of = fn(s : Ordered, a : s.T, b : s.T) { open s; if (a > b) { a } else { b } };
 ```

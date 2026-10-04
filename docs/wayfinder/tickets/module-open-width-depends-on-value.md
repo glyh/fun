@@ -1,6 +1,6 @@
 ---
 title: Opening a module needs its value, and a non-module open is skipped silently
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

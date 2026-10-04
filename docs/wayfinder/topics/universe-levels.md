@@ -13,12 +13,12 @@ with `Type(i) : Type(i + 1)` and cumulativity (a `Type(i)` is a `Type(j)` when
 at any tier. This is the Agda / Lean 4 / Coq arrangement, and it is what lets one
 `Category`, `Functor` or `Monad` definition serve small and large types alike.
 
-## Where `fun` stands
+## Where `quill` stands
 
 `Type : Type` today, deliberately.
 
 - `Core.U` is a **singleton term** and `VU` a singleton value
-  (`src/Fun.Kernel/Core.cs`) — no level field, nothing to carry one.
+  (`src/Quill.Kernel/Core.cs`) — no level field, nothing to carry one.
 - [dependent-types](dependent-types.md) says so in as many words: the model "is
   intentionally simple … can be replaced with a proper universe hierarchy
   later."
@@ -42,7 +42,7 @@ Every place a `Type` appears is candidate churn, and the churn is not localized:
   on open `Type` is acceptable"). A hierarchy has to say what matching on
   `Type(i)` means and whether `i` is observable.
 - Prelude nominals and `Compiler_names`'s `Type` reference move, and the
-  dependent-typed prelude (`std/stage1.fun`, `stage2.fun`) is re-elaborated
+  dependent-typed prelude (`std/stage1.qll`, `stage2.qll`) is re-elaborated
   under the new rule.
 
 ## Why this is fog, not a ticket

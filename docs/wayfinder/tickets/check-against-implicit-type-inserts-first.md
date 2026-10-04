@@ -1,6 +1,6 @@
 ---
 title: Checking a value against an implicit function type inserts metas before binding
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -42,5 +42,5 @@ pre-fix state (2026-09-16); it is historical, not the current behaviour. Closed
 after re-running both runners on `main @ d58af64`: `dune test --root .
 test/conformance` reports `690 cases, 0 failed, 19 known prototype divergences`,
 so `values/check-against-implicit-type` fails in the prototype as listed; `cd
-dotnet && dotnet run --project test/Fun.Conformance --no-build` passes it (not
+dotnet && dotnet run --project test/Quill.Conformance --no-build` passes it (not
 among the 13 unrelated residue failures), so the port is correct.

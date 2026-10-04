@@ -10,19 +10,19 @@ starts widening the interface.
 
 ## What the compiler knows, and who might want it
 
-`fun` already has, in one place or another:
+`quill` already has, in one place or another:
 
 | facility | where |
 |---|---|
-| bidirectional elaboration (`infer` / `check`) | `src/Fun.Compiler/Elaborator*.cs` |
-| unification, metavariables, Miller-pattern solving | `src/Fun.Compiler/Unify.cs` |
-| normalization by evaluation, conversion, quoting | `src/Fun.Compiler/Nbe.cs` |
+| bidirectional elaboration (`infer` / `check`) | `src/Quill.Compiler/Elaborator*.cs` |
+| unification, metavariables, Miller-pattern solving | `src/Quill.Compiler/Unify.cs` |
+| normalization by evaluation, conversion, quoting | `src/Quill.Compiler/Nbe.cs` |
 | effect-row computation, handler checking | `Elaborator.Effects.cs`, `Nbe.Effects.cs` |
 | pattern compilation and exhaustiveness | `Core.Match.cs`, `Nbe.Match.cs` (`Elaborator.Match.cs`) |
-| the shared evaluation budget | `src/Fun.Compiler/Budget.cs` |
-| reflection over `Expr` / `Decl` / `Pattern` | `src/Fun.Expand/Reflection.cs` |
-| driver: source → checked term → value | `src/Fun.Compiler/Driver.cs` |
-| the loader and its per-unit caches | `src/Fun.Compiler/Loader.cs` |
+| the shared evaluation budget | `src/Quill.Compiler/Budget.cs` |
+| reflection over `Expr` / `Decl` / `Pattern` | `src/Quill.Expand/Reflection.cs` |
+| driver: source → checked term → value | `src/Quill.Compiler/Driver.cs` |
+| the loader and its per-unit caches | `src/Quill.Compiler/Loader.cs` |
 
 The full stretch goal is: a downstream user can hold a `Context`, ask what is in
 scope, infer and check terms, unify, solve a goal, normalize a value, compile a
@@ -53,16 +53,16 @@ same thing. Two surfaces would drift.
 
 This is an interface-widening decision, not a feature.
 
-**`Fun.Expand` cannot reference `Fun.Compiler`** (`CLAUDE.md`, "The three-project
+**`Quill.Expand` cannot reference `Quill.Compiler`** (`CLAUDE.md`, "The three-project
 split is load-bearing"). Expansion is parsing interleaved with macro execution,
 and the elaborator is its consumer — that direction is what keeps hygiene from
 depending on elaboration. Today exactly one adapter crosses the line:
-`IMacroRuntime` (`src/Fun.Expand/MacroRuntime.cs`), whose whole surface is
+`IMacroRuntime` (`src/Quill.Expand/MacroRuntime.cs`), whose whole surface is
 `LoadSyntax`, `Advance`, `CompileMacro`, `CompileSignature`, `ApplyExpr`,
 `ApplyDecls`.
 
 The encouraging half: the *vocabulary* an API speaks in already lives below both
-— `Fun.Kernel` holds `Atom`, `Core` (terms, values, patterns, decision trees),
+— `Quill.Kernel` holds `Atom`, `Core` (terms, values, patterns, decision trees),
 `Syntax`, `ScopeSet`, `SourceSpan`. Only the *operations* need the compiler. So
 the shape is a capability interface declared in a layer both can see, implemented
 where the elaborator lives, handed to expansion at construction — the pattern
@@ -73,12 +73,12 @@ The three ways to widen it, for the ticket to choose between:
 1. **Grow `IMacroRuntime`.** Cheapest; the risk is that it is also the hygiene
    boundary, and it should not become a way for a macro to mint scope sets or
    observe metas in a shape that breaks the one hygiene contract.
-2. **A capability interface in `Fun.Kernel`, implementation in `Fun.Compiler`.**
+2. **A capability interface in `Quill.Kernel`, implementation in `Quill.Compiler`.**
    Keeps the operation set explicit and lets out-of-process callers use it too.
-3. **A fourth assembly (`Fun.Api`) depending on all three**, used by the CLI,
+3. **A fourth assembly (`Quill.Api`) depending on all three**, used by the CLI,
    the LSP and the REPL. This serves out-of-process consumers cleanly but does
    *not* by itself let a macro reach the elaborator — macros run inside
-   `Fun.Expand`, so a compile-time capability still has to cross the boundary
+   `Quill.Expand`, so a compile-time capability still has to cross the boundary
    through (1) or (2).
 
 ## Guardrails

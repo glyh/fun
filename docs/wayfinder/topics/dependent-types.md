@@ -25,7 +25,7 @@ Terms use de Bruijn indices. Semantic values use de Bruijn levels. Names are sur
 
 The current universe model is intentionally simple:
 
-```fun
+```quill
 Type : Type
 ```
 
@@ -75,7 +75,7 @@ Open domains such as `Type` remain conservative for exhaustiveness; finite nomin
 
 ## Imports
 
-`import "path"` resolves `<cwd>/path.fun`, parses it as a module file, caches the parsed module, and detects circular imports. Imported module files expose public members through ordinary struct semantics.
+`import "path"` resolves `<cwd>/path.qll`, parses it as a module file, caches the parsed module, and detects circular imports. Imported module files expose public members through ordinary struct semantics.
 
 ## Verification
 

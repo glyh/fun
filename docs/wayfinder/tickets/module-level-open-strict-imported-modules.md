@@ -1,6 +1,6 @@
 ---
 title: Module-level open form (strict imported modules)
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
@@ -14,14 +14,14 @@ blocked_by:
 
 ## Question
 
-Add an `open <module-expr>` form usable at **module top level** (a `.fun` file /
+Add an `open <module-expr>` form usable at **module top level** (a `.qll` file /
 `module … end` body), not only inside `do` blocks / expression bodies. This closes
 the one gap left by
 [Explicit prelude open for operator demotion](explicit-prelude-open-operator-demotion.md):
 under the strict phase rule, an *expression* sees prelude operators only where
 `std` is opened, but an imported **module** is still auto-opened by the loader
 (`Parse_expand.parse_module … ~open_prelude:true`) because there is nowhere to
-write the open. Once module-level `open` exists, imported `.fun` files can — and
+write the open. Once module-level `open` exists, imported `.qll` files can — and
 should — `open (import "std")` themselves, and the loader's blanket
 `~open_prelude:true` can be dropped, making modules strict like expressions.
 
@@ -69,7 +69,7 @@ should — `open (import "std")` themselves, and the loader's blanket
   (It currently uses no infix operators in its body, so it parses fine either
   way — but a genuine module-level open would let it drop any remaining
   special-casing.)
-- Interaction with the deferred **module-as-`.fun`-file** question (parent's
+- Interaction with the deferred **module-as-`.qll`-file** question (parent's
   risk note): a real shipped prelude file would `open (import "std")`… but `std`
   *is* the prelude, so the prelude must not open itself. Keep `std` a reserved
   builtin for now.

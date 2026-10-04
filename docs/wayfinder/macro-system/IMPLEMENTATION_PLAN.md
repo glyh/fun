@@ -6,7 +6,7 @@
 
 ## Goal
 
-Build a hygienic, regular-syntax, type-integrated macro system for `fun` without committing the prototype to a dead-end parser or a surface-only rewrite pass.
+Build a hygienic, regular-syntax, type-integrated macro system for `quill` without committing the prototype to a dead-end parser or a surface-only rewrite pass.
 
 The final system should support:
 
@@ -354,7 +354,7 @@ Purpose:
 
 First supported shape:
 
-```fun
+```quill
 do macro name(stx) -> body; ... end
 ```
 

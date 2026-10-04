@@ -1,6 +1,6 @@
 ---
 title: A syntax form's capture extent is chosen by catching parse errors
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed

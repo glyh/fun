@@ -1,6 +1,6 @@
 ---
 title: Self type has no identity, so unrelated recursive records unify
-parent: ../fun-design-map.md
+parent: ../quill-design-map.md
 labels:
   - wayfinder:task
 status: closed
