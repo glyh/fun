@@ -26,6 +26,21 @@ public sealed class MetaContext
     /// </summary>
     public bool Matching { get; set; }
 
+    /// <summary>
+    /// First-order approximation, off by default (Lean's <c>foApprox</c>, the same name
+    /// and the same default). Under it <see cref="Unify.Solve"/> may solve a meta whose
+    /// spine is not a pattern - an entry that is not a distinct bound variable - by
+    /// taking the head of the right-hand side when that head's own arguments are exactly
+    /// the spine: <c>?F(I64) = List(I64)</c> becomes <c>?F := λx. List(x)</c>. It is an
+    /// approximation and not an inversion: a pattern spine determines its solution
+    /// uniquely, while this picks one of several, so it is enabled deliberately around
+    /// the argument check that needs it and nowhere else. The unifier proper leaves it
+    /// false, and a spine that is not a pattern is still refused there. Because it fires
+    /// only where a pattern would have been refused, it turns a present failure into a
+    /// success and cannot change a program that passes today.
+    /// </summary>
+    public bool FoApprox { get; set; }
+
     public int Fresh()
     {
         _solutions.Add(null);

@@ -34,6 +34,23 @@ public static partial class Elaborator
         return (term, type);
     }
 
+    /// <summary>
+    /// Elaborating <paramref name="action"/> with the first-order approximation on
+    /// (<see cref="MetaContext.FoApprox"/>). An argument checked against an arrow's domain
+    /// is what determines the hidden type arguments before it, so this is the step that
+    /// has to be permissive: <c>Functor.map(g, xs)</c> learns the functor from
+    /// <c>xs</c>'s type, which is <c>?F(I64) = List(I64)</c> — not a pattern, and refused
+    /// without the approximation. Restored whatever happens, as <c>Matching</c> is; the
+    /// unifier proper keeps it off, so a non-pattern spine is refused everywhere else.
+    /// </summary>
+    private static T Approx<T>(Context ctx, Func<T> action)
+    {
+        var was = ctx.Metas.FoApprox;
+        ctx.Metas.FoApprox = true;
+        try { return action(); }
+        finally { ctx.Metas.FoApprox = was; }
+    }
+
     /// <summary><c>f[a]</c>: an implicit argument written out, checked against the implicit domain.</summary>
     private static (Term, Value) InferApImplicit(Context ctx, Syntax.Ap ap)
     {

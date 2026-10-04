@@ -634,7 +634,7 @@ public static partial class Elaborator
         {
             case Value.VPi { Explicitness: Explicitness.Explicit } pi:
             {
-                var (arg, argEffects) = Collecting(ctx, c => Check(c, ap.Arg, pi.Domain));
+                var (arg, argEffects) = Collecting(ctx, c => Approx(c, () => Check(c, ap.Arg, pi.Domain)));
                 Emit(ctx, argEffects);
                 var result = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, ArgumentValue(ctx, arg, argEffects));
                 return (EmitLatent(ctx, pi, new Term.Ap(fn, Explicitness.Explicit, arg)), ctx.Force(result));

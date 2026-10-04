@@ -307,6 +307,18 @@ as the frontier reaches them.
   Detail: [universe-levels](topics/universe-levels.md). Sharpens when the first
   abstraction that must quantify over arbitrary types is written and cannot be
   duplicated per tier.
+  **Probed 2026-10-03 — the sharpening was attempted and did not hold.** The first
+  consumer the topic named, a `Functor` trait, is blocked by a **kind**, not a tier:
+  `ElaborateTrait` typed every trait parameter as `Type`, so `f(A)` was `applying
+  non-function` while `fn(f : Type -> Type, a : Type) : Type { f(a) }` evaluated to
+  `VNominal`. Fixing the kind is small and landed — trait 965/0, xUnit 210/210 — and
+  the real distance is named in
+  [a trait parameter may be a type constructor](tickets/trait-parameter-type-constructor.md).
+  So under `Type : Type` there is **one** universe: nothing is "duplicated per tier"
+  when there are no tiers, and the only thing a hierarchy buys is soundness —
+  Girard's paradox — which the topic already records as a deliberate trade. Fog stays
+  fog, and the trap to avoid is re-reading this item's *stated* motivation as a
+  consumer: the arc that reached it was a trait-system defect, not a universe level.
 - **Content-addressed codebase database** — the Unison architecture
   (<https://www.unison-lang.org/>): definitions identified by the hash of their
   AST, names as separately stored metadata, with expansion / elaboration /
@@ -328,7 +340,7 @@ as the frontier reaches them.
 
 ### Frontier (2026-09-26)
 
-**2026-10-03 — 21 open** (frontmatter count, the three port umbrellas among them),
+**2026-10-03 — 22 open** (frontmatter count, the three port umbrellas among them),
 **suite 961 cases, 0 failed, xUnit 210/210** — the 2026-10-01 session closed 17 open with six forks
 plus one follow-up, every one merged and re-measured by the integrator rather than believed; three
 more tickets have been filed since, and the elaborator-error position landed (`bff4bbe`).
@@ -400,6 +412,14 @@ more tickets have been filed since, and the elaborator-error position landed (`b
   handler constraint (no stack to save — evidence passing), and the FFI fog item, which the ideas
   doc says must be settled first. Not scheduled: no consumer, compile time unmeasured, and the
   second-backend cost is recorded (Skew shipped four and died of a small standard library).
+- **[A trait parameter may be a type constructor](tickets/trait-parameter-type-constructor.md)** (filed 2026-10-03) —
+  the measured end of the universes fog: the `Functor` trait that item named as its
+  sharpening consumer is blocked by a trait-parameter *kind*, not a universe *tier*.
+  The kind fix landed (parameter type is a meta the sig solves; 965/0, xUnit 210/210) and
+  the remainder is named: `Functor.map(g, xs)` cannot infer the constructor, because
+  `?F(I64) = List(I64)` is not a Miller pattern. Three ways out, none ruled — defer the
+  implicit where `Eq.eq(1, 1)` already defers, a first-order approximation in the
+  unifier, or accept the written constructor.
 
 **Rulings still owed, all the user's:** the `d`/`e` branch-local-type question and the `Evidence`
 mechanism ([type-case-refinement](tickets/type-case-refinement-walks-whole-context.md));

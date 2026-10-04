@@ -7,12 +7,19 @@ namespace Fun.Kernel;
 /// declarations with the same operations are still two traits.
 /// </summary>
 // A class, not a record: equality is reference equality.
-public sealed class TraitDecl(string name, EquatableArray<(string Name, Closure Type)> operations)
+public sealed class TraitDecl(string name, EquatableArray<(string Name, Closure Type)> operations, Value paramType)
 {
     private static int _next;
 
     public int Id { get; } = Interlocked.Increment(ref _next);
     public string Name { get; } = name;
+
+    /// <summary>
+    /// The type of the trait's one parameter, solved from the sig: `Type` where the
+    /// sig uses the parameter as a type, a function type where the sig applies it (a
+    /// type constructor). A trait never writes its parameter's kind.
+    /// </summary>
+    public Value ParamType { get; } = paramType;
 
     /// <summary>
     /// Each operation's type, closed over the declaring environment and read under

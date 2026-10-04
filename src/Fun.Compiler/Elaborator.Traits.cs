@@ -36,7 +36,10 @@ public static partial class Elaborator
     /// <summary>
     /// A trait: its one parameter is a defined entry standing for itself, and each
     /// operation type is read under it and kept as a closure over the declaring
-    /// environment, applied to the trait's argument where the trait is used.
+    /// environment, applied to the trait's argument where the trait is used. The
+    /// parameter's own type starts as a meta the sig solves: used as a type it is
+    /// `Type`, applied to an argument it is a function type — so a trait over a type
+    /// constructor (`Functor(f)`, applied as `f(A)`) needs no written kind.
     /// </summary>
     private static TraitDecl ElaborateTrait(Context ctx, string name, string param, EquatableArray<(string Name, Syntax Type)> fields)
     {
@@ -46,8 +49,9 @@ public static partial class Elaborator
         foreach (var (field, _) in fields)
             if (!seen.Add(field)) throw new FunException($"duplicate trait field `{field}`");
 
-        var paramCtx = ctx.Define(param, Value.VU.Instance, new Value.VVar(ctx.Width, []));
-        return new TraitDecl(name, [.. fields.Select(f => (f.Name, new Closure(ctx.Environment, TypeTerm(paramCtx, f.Type))))]);
+        var paramType = ctx.Eval(FreshMeta(ctx));
+        var paramCtx = ctx.Define(param, paramType, new Value.VVar(ctx.Width, []));
+        return new TraitDecl(name, [.. fields.Select(f => (f.Name, new Closure(ctx.Environment, TypeTerm(paramCtx, f.Type))))], paramType);
     }
 
     /// <summary><c>trait T(a) = sig { … }; body</c>: the trait is a definition the body sees.</summary>
@@ -84,7 +88,11 @@ public static partial class Elaborator
         var trait = LocateTrait(ctx, traitPath);
         var (argTerm, argType) = Infer(ctx, argSyntax);
         var arg = ctx.Eval(argTerm);
-        CheckTypeLike(ctx, argType, arg);
+        // The head's argument is checked against the trait's own parameter type: `Type`
+        // for a trait over a type, a function type for one over a type constructor.
+        var paramType = ctx.Force(trait.ParamType);
+        if (paramType is Value.VU) CheckTypeLike(ctx, argType, arg);
+        else ctx.Unify(argType, paramType);
         return (trait, arg, new Value.VTraitDict(trait, [arg], Nbe.OperationTypes(ctx.Metas, trait, arg)));
     }
 
@@ -434,7 +442,10 @@ public static partial class Elaborator
     private static (Term, Value) InferBoundArrow(Context ctx, Syntax.Arrow arrow, List<TraitDecl> traits)
     {
         var arg = new Value.VVar(ctx.Width, []);
-        var inner = ctx.Bind(arrow.Name!.Name, Value.VU.Instance);
+        // The bound variable takes the bound trait's own parameter type: `[A : Type]`
+        // for a trait over a type, `[F : Type -> Type]` for one over a type constructor.
+        var paramType = traits.Count > 0 ? ctx.Force(traits[0].ParamType) : Value.VU.Instance;
+        var inner = ctx.Bind(arrow.Name!.Name, paramType);
         var dicts = new List<Term>();
         foreach (var trait in traits)
         {
@@ -445,7 +456,7 @@ public static partial class Elaborator
         }
         var body = TypeTerm(inner, arrow.Codomain);
         for (var i = dicts.Count - 1; i >= 0; i--) body = new Term.Pi(Explicitness.Implicit, dicts[i], body);
-        return (new Term.Pi(Explicitness.Implicit, Term.U.Instance, body), Value.VU.Instance);
+        return (new Term.Pi(Explicitness.Implicit, Nbe.Quote(ctx.Metas, ctx.Width, paramType), body), Value.VU.Instance);
     }
 
     /// <summary>
@@ -686,7 +697,9 @@ public static partial class Elaborator
         var dictType = new Value.VTraitDict(trait, [arg], Nbe.OperationTypes(ctx.Metas, trait, arg));
         if (dictType.Operations.All(o => o.Name != name)) throw new FunException($"unknown trait method `{name}`");
         var opType = dictType.Operations.Last(o => o.Name == name).Type;
-        var type = new Term.Pi(Explicitness.Implicit, Term.U.Instance,
+        // The argument binder takes the trait's own parameter type: `[A : Type]` for a
+        // trait over a type, `[F : Type -> Type]` for one over a type constructor.
+        var type = new Term.Pi(Explicitness.Implicit, Nbe.Quote(ctx.Metas, ctx.Width, ctx.Force(trait.ParamType)),
             new Term.Pi(Explicitness.Implicit, Nbe.Quote(ctx.Metas, ctx.Width + 1, dictType),
                 Nbe.Quote(ctx.Metas, ctx.Width + 2, opType)));
         return (new Term.Lam(new Term.Lam(new Term.Dot(new Term.Var(0), name))), ctx.Eval(type));
@@ -696,23 +709,40 @@ public static partial class Elaborator
     /// An application whose function next takes hidden dictionaries: each waits on
     /// a placeholder until the explicit argument is checked (solving the type
     /// arguments), then is resolved. An argument still unknown takes a meta; a known
-    /// one with no impl is an error.
+    /// one with no impl is an error. Past a dictionary, the traversal continues
+    /// through the trait's own hidden sig parameters - they sit between the
+    /// dictionary and the explicit argument (`[Dict(F)] -> [A : Type] -> [B : Type]
+    /// -> …`) - each taking a meta exactly as <see cref="InsertImplicitArgs"/>
+    /// supplies one. With no dictionary among them the ordinary path applies.
     /// </summary>
     private static (Term, Value)? InferApWithPendingDicts(Context ctx, Term fn, Value fnType, Syntax argSyntax)
     {
-        var pending = new List<Value.VTraitDict>();
+        // Every hidden binder before the explicit argument, in application order: a
+        // dictionary fills in with its evidence after the argument is checked, any
+        // other binder with the meta it takes now.
+        var hidden = new List<(Value.VTraitDict? Dict, Term? Arg)>();
         var type = fnType;
-        while (ctx.Force(type) is Value.VPi { Explicitness: Explicitness.Implicit } pi && ctx.Force(pi.Domain) is Value.VTraitDict dict)
+        while (ctx.Force(type) is Value.VPi { Explicitness: Explicitness.Implicit } pi)
         {
-            pending.Add(dict);
-            type = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, ctx.RawMeta());
+            if (ctx.Force(pi.Domain) is Value.VTraitDict dict)
+            {
+                hidden.Add((dict, null));
+                type = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, ctx.RawMeta());
+            }
+            else if (hidden.Any(h => h.Dict is not null))
+            {
+                var meta = FreshMeta(ctx);
+                hidden.Add((null, meta));
+                type = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, ctx.Eval(meta));
+            }
+            else break;
         }
-        if (pending.Count == 0 || ctx.Force(type) is not Value.VPi { Explicitness: Explicitness.Explicit } explicitPi) return null;
+        if (!hidden.Any(h => h.Dict is not null) || ctx.Force(type) is not Value.VPi { Explicitness: Explicitness.Explicit } explicitPi) return null;
 
-        var (arg, argEffects) = Collecting(ctx, c => Check(c, argSyntax, explicitPi.Domain));
+        var (arg, argEffects) = Collecting(ctx, c => Approx(c, () => Check(c, argSyntax, explicitPi.Domain)));
         Emit(ctx, argEffects);
-        foreach (var dict in pending)
-            fn = new Term.Ap(fn, Explicitness.Implicit, Evidence(ctx, dict.Decl, dict.Args));
+        foreach (var (dict, meta) in hidden)
+            fn = new Term.Ap(fn, Explicitness.Implicit, dict is { } d ? Evidence(ctx, d.Decl, d.Args) : meta!);
         // The argument's value is read only when evaluating it is safe: one that
         // performs takes a rigid stand-in as the codomain's argument.
         var result = Nbe.ApplyClosure(ctx.Metas, explicitPi.Codomain, ArgumentValue(ctx, arg, argEffects));

@@ -114,12 +114,58 @@ public static partial class Unify
             return;
         }
 
+        if (mc.FoApprox && Approximate(mc, width, id, spine, rhs) is { } approximated)
+        {
+            mc.Solve(id, approximated);
+            return;
+        }
+
         var renaming = Invert(mc, width, spine);
         Term body = Rename(mc, id, renaming, rhs);
         for (var i = 0; i < spine.Length; i++) body = new Term.Lam(body);
         mc.Solve(id, Nbe.Eval(mc, Environment.Empty, body));
     }
 
+    /// <summary>
+    /// First-order approximation for a spine that is not a pattern, under
+    /// <see cref="MetaContext.FoApprox"/>: <c>?F(spine) = Head(captures)</c> where the
+    /// spine's entries are the head's <em>last</em> captures and convert to them, so the
+    /// meta is the head with its trailing captures abstracted -
+    /// <c>?F := λx₁…xₙ. Head(c₁…cₖ, x₁…xₙ)</c>. The head may carry more captures than the
+    /// spine has entries (an applied nominal former keeps its leading ones as written),
+    /// which is why the match is on the suffix. An approximation, not an inversion: that
+    /// lambda is one of several solutions of the equation, and the head is taken only
+    /// because its own trailing arguments are the spine. Null whenever the shapes do not
+    /// line up, or a leading capture mentions a variable - it would escape the spine's
+    /// lambdas, exactly as <see cref="Rename"/> refuses one for a pattern.
+    /// </summary>
+    private static Value? Approximate(MetaContext mc, int width, int id, EquatableArray<Value> spine, Value rhs)
+    {
+        var n = spine.Length;
+        if (Nbe.Force(mc, rhs) is not Value.VNominal { Captures: var captures } nominal || captures.Length < n)
+            return null;
+        var lead = captures.Length - n;
+        for (var i = 0; i < n; i++)
+            if (!Nbe.Convertible(mc, width, captures[lead + i], spine[i])) return null;
+
+        // The leading captures are kept as written, under a renaming that maps nothing: a
+        // variable among them has nowhere to point in the spine's lambdas, and the trial
+        // is abandoned rather than read as some other solution.
+        var renaming = new Renaming(n, width, ImmutableDictionary<int, int>.Empty);
+        EquatableArray<Term> items;
+        try
+        {
+            items = [.. captures.Select((capture, i) => i < lead
+                ? Rename(mc, id, renaming, capture)
+                : new Term.Var(Nbe.LevelToIndex(n, i - lead)))];
+        }
+        catch (UnifyException) { return null; }
+
+        OccursCheck(mc, id, rhs);
+        Term body = new Term.Nominal(nominal.Decl, items);
+        for (var i = 0; i < n; i++) body = new Term.Lam(body);
+        return Nbe.Eval(mc, Environment.Empty, body);
+    }
     /// <summary>
     /// A partial renaming from the context a meta is solved in (<c>Cod</c>
     /// entries) to its solution's lambdas (<c>Dom</c> entries): which context
