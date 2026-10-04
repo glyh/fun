@@ -118,6 +118,10 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   `trait`/`impl`, structural dictionary evidence, bound implicits; **mostly
   complete** — remaining deriving/protocol work is
   [Design trait library deriving and protocols](tickets/design-trait-library-deriving-and-protocols.md).
+  A trait's parameter may now be a **type constructor**, not only a type
+  (`trait Functor(f) = sig { map : … f(A) … }`, `51d79c8`), with the constructor
+  inferred at a use by a bounded, default-off approximation (`MetaContext.FoApprox`,
+  after Lean's) — `std/functor.fun` is the first consumer.
 - [Algebraic effects](topics/algebraic-effects.md) — nominal effect families, open
   rows, `perform`/handlers/`resume`, deep handlers; **complete**.
 - [References](topics/references.md) — `Ref(A)`, `ref`/`deref`/`<-`, cell-capturing

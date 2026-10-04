@@ -26,7 +26,7 @@ public static class Prelude
 
     /// <summary>The prelude's units, lowest first. Each is elaborated against the ones
     /// before it, and <see cref="Path"/> is the one a program imports.</summary>
-    private static readonly string[] Order = [BootstrapPath, "std/lib", "std/list", "std/option", "std/type", Path];
+    private static readonly string[] Order = [BootstrapPath, "std/lib", "std/list", "std/option", "std/functor", "std/type", Path];
 
     private static readonly Dictionary<string, int> Index =
         Order.Select((path, i) => (path, i)).ToDictionary(x => x.path, x => x.i);
