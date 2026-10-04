@@ -328,7 +328,7 @@ as the frontier reaches them.
 
 ### Frontier (2026-09-26)
 
-**2026-10-03 — 20 open** (frontmatter count, the three port umbrellas among them),
+**2026-10-03 — 21 open** (frontmatter count, the three port umbrellas among them),
 **suite 961 cases, 0 failed, xUnit 210/210** — the 2026-10-01 session closed 17 open with six forks
 plus one follow-up, every one merged and re-measured by the integrator rather than believed; three
 more tickets have been filed since, and the elaborator-error position landed (`bff4bbe`).
@@ -392,6 +392,14 @@ more tickets have been filed since, and the elaborator-error position landed (`b
   by the 60s timeout or by a stack overflow in `Unify.Mentions` — a race), and the runner's
   `--isolated` mode makes both one case's failure. Remains: the crash-class shape has no in-process
   case, and the sweep should run with `--isolated`.
+- **[A .NET backend](tickets/dotnet-backend.md)** (filed 2026-10-03) — the first direction ticket that is not a
+  language or macro question: lower `Core.term` to something runnable on .NET, the runtime the
+  compiler already sits on. The analysis lives in `docs/ideas/compiler-architecture.md` (verdict:
+  *undecided and unscheduled* — emit C, a native dependency, or a code generator plus collector
+  over the host); what a backend would touch is a new pipeline stage after `Core.term`, the .NET IL
+  handler constraint (no stack to save — evidence passing), and the FFI fog item, which the ideas
+  doc says must be settled first. Not scheduled: no consumer, compile time unmeasured, and the
+  second-backend cost is recorded (Skew shipped four and died of a small standard library).
 
 **Rulings still owed, all the user's:** the `d`/`e` branch-local-type question and the `Evidence`
 mechanism ([type-case-refinement](tickets/type-case-refinement-walks-whole-context.md));
