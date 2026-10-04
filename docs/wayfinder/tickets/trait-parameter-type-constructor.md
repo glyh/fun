@@ -3,7 +3,9 @@ title: A trait parameter may be a type constructor
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-10-03
+resolution: "Closed 2026-10-03: landed as `51d79c8`. Both halves: a trait parameter's type is a meta the sig solves, and the constructor is inferred by a first-order approximation shaped as Lean's `foApprox` (named flag, default off, bounded to the head's trailing captures, one enable-site). Gate: `dotnet build` 0 errors, conformance 965 cases / 0 failed, xUnit 210/210, and the unwritten form still refused with the flag at its default."
 assignee:
 blocked_by: []
 ---
@@ -135,7 +137,7 @@ restoring — not asserted.
 the equation admits, which is why it is bounded to the shape above and off everywhere
 else, and why the written `[F]` remains the way to override a guess you can see coming.
 
-**State:** landed in the working tree, uncommitted.
+**State:** landed as `51d79c8`.
 
 ## Why it is a ticket and not a fog item
 
