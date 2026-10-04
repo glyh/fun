@@ -344,7 +344,7 @@ as the frontier reaches them.
 
 ### Frontier (2026-09-26)
 
-**2026-10-03 — 21 open** (frontmatter count, the three port umbrellas among them),
+**2026-10-03 — 22 open** (frontmatter count, the three port umbrellas among them),
 **suite 961 cases, 0 failed, xUnit 210/210** — the 2026-10-01 session closed 17 open with six forks
 plus one follow-up, every one merged and re-measured by the integrator rather than believed; three
 more tickets have been filed since, and the elaborator-error position landed (`bff4bbe`).
@@ -426,6 +426,16 @@ more tickets have been filed since, and the elaborator-error position landed (`b
   enabled at one argument check. Instrumenting the failing unification is what settled
   that rule; an equal-arity match would have declined every real case. 965/0, xUnit
   210/210, and with the flag at its default the refusal still stands.
+- **[Load std units in any order, pinning only the bootstrap](tickets/load-std-units-in-any-order.md)** (filed 2026-10-03) —
+  adding `std/functor` needed an edit to `Prelude.Order`, a hand-maintained topological
+  order for the whole standard library; without it the import is `not found` **even
+  though the source is embedded and the build is clean**. Four readers depend on that
+  array (path→stage, the units below an importer, the unit bound as `Std` while a std
+  unit elaborates, and metas seeding), and the bootstrap is genuinely special and stays
+  pinned. Wanted: demand-load, or the cheaper option of deriving the same list from the
+  import graph. Five open questions, among them what `Std` means inside a std unit
+  (today, whatever the array put directly below — arbitrary) and what replaces
+  `prelude[^1]` for metas seeding once the graph branches.
 
 **Rulings still owed, all the user's:** the `d`/`e` branch-local-type question and the `Evidence`
 mechanism ([type-case-refinement](tickets/type-case-refinement-walks-whole-context.md));
